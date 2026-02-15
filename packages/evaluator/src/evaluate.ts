@@ -1,7 +1,67 @@
 import { Flag, EvaluationContext, Segment, EvaluationResult } from './types.js';
-import { isUserInSegment } from './segments.js';
 import { matchClause } from './clauses.js';
 import { hashUser, bucketUser } from './hash.js';
+
+const MAX_SEGMENT_DEPTH = 10;
+
+function evaluateSegmentClause(
+  context: EvaluationContext,
+  segments: Map<string, Segment>,
+  segmentKey: string,
+  negate: boolean,
+  depth: number,
+): boolean {
+  if (depth >= MAX_SEGMENT_DEPTH) return false;
+
+  const segment = segments.get(segmentKey);
+  if (!segment) return false;
+
+  // Check if any segment rule references another segment — recurse with depth + 1
+  const inSegment = isUserInSegmentWithDepth(context, segment, segments, depth + 1);
+  return negate ? !inSegment : inSegment;
+}
+
+function isUserInSegmentWithDepth(
+  context: EvaluationContext,
+  segment: Segment,
+  segments: Map<string, Segment>,
+  depth: number,
+): boolean {
+  // Excluded takes priority
+  if (segment.excluded.includes(context.key)) return false;
+
+  // Included bypasses rules
+  if (segment.included.includes(context.key)) return true;
+
+  // Evaluate rules (OR logic: any match = IN)
+  return segment.rules.some((rule) => {
+    const clausesMatch = rule.clauses.every((clause) => {
+      // Handle nested segment references within segment rules
+      if (clause.attribute.startsWith('segment:')) {
+        const nestedSegmentKey = clause.attribute.replace('segment:', '');
+        return evaluateSegmentClause(
+          context,
+          segments,
+          nestedSegmentKey,
+          clause.negate ?? false,
+          depth,
+        );
+      }
+      return matchClause(clause, context);
+    });
+
+    if (!clausesMatch) return false;
+
+    // Optional: Percentage rollouts within a segment
+    if (rule.rollout) {
+      const bucketBy = rule.rollout.bucketBy || 'key';
+      const bucket = hashUser(String(context[bucketBy]), segment.key);
+      return bucket < (rule.rollout.variations[0]?.weight || 0);
+    }
+
+    return true;
+  });
+}
 
 export function evaluate(
   flag: Flag,
@@ -40,11 +100,13 @@ export function evaluate(
         // Special Case: Segment Targeting
         if (clause.attribute.startsWith('segment:')) {
           const segmentKey = clause.attribute.replace('segment:', '');
-          const segment = segments.get(segmentKey);
-          if (!segment) return false;
-
-          const inSegment = isUserInSegment(context, segment);
-          return clause.negate ? !inSegment : inSegment;
+          return evaluateSegmentClause(
+            context,
+            segments,
+            segmentKey,
+            clause.negate ?? false,
+            0,
+          );
         }
 
         return matchClause(clause, context);
