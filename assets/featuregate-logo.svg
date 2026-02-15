@@ -1,0 +1,16 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="feature-gradient" x1="100" y1="100" x2="170" y2="100" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#00D2FF" />
+      <stop offset="1" stop-color="#00FF85" />
+    </linearGradient>
+  </defs>
+  
+  <path fill-rule="evenodd" clip-rule="evenodd" d="M40 60C40 37.9086 57.9086 20 80 20H120C142.091 20 160 37.9086 160 60V180H130V135H70V180H40V60ZM70 105V60C70 54.4772 74.4772 50 80 50H120C125.523 50 130 54.4772 130 60V105H70Z" fill="#1A2B4C"/>
+  
+  <rect x="55" y="75" width="90" height="50" rx="25" fill="#2C3E63"/>
+  
+  <circle cx="130" cy="100" r="22" fill="url(#feature-gradient)"/>
+  
+  <path d="M126 90L138 100L126 110V103H118V97H126V90Z" fill="#1A2B4C"/>
+</svg>

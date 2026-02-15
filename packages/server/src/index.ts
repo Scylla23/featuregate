@@ -1,6 +1,17 @@
 import express from 'express';
 import { evaluate } from '@featuregate/evaluator';
 
+import { connectDatabase } from './config/database.js';
+import { getRedisClient } from './config/redis.js';
+
+async function bootstrap() {
+  await connectDatabase();
+  const redis = getRedisClient();
+  await redis.set('health', 'ok');
+  console.log('Redis test:', await redis.get('health'));
+}
+bootstrap();
+
 const app = express();
 const port = 3000;
 
