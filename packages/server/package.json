@@ -9,7 +9,8 @@
         "start": "node dist/index.js",
         "lint": "eslint .",
         "typecheck": "tsc --noEmit",
-        "seed": "tsx src/scripts/seed.ts"
+        "seed": "tsx src/scripts/seed.ts",
+        "test:integration": "NODE_OPTIONS='--experimental-vm-modules' npx jest --config jest.integration.config.mjs"
     },
     "dependencies": {
         "@featuregate/evaluator": "workspace:^",
@@ -25,9 +26,15 @@
         "@types/bcryptjs": "^3.0.0",
         "@types/express": "^4.17.21",
         "@types/express-serve-static-core": "^5.1.1",
+        "@types/jest": "^29.5.0",
         "@types/jsonwebtoken": "^9.0.10",
         "@types/mongoose": "^5.11.97",
         "@types/node": "^20.12.7",
+        "@types/supertest": "^6.0.3",
+        "jest": "^29.7.0",
+        "mongodb-memory-server": "^11.0.1",
+        "supertest": "^7.2.2",
+        "ts-jest": "^29.2.0",
         "tsx": "^4.7.2",
         "typescript": "^5.4.5"
     }

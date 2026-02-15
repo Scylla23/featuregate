@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { Flag } from '../models/Flag.js';
 import { authenticateDashboard } from '../middleware/auth.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
-import { invalidateFlagCache, publishFlagUpdate } from '../services/cacheService.js';
+import { invalidateFlagCache } from '../services/cacheService.js';
+import { publishFlagUpdate } from '../sse/publisher.js';
 import { createAuditEntry } from '../services/auditService.js';
 import { NotFoundError, ConflictError, ValidationError } from '../utils/errors.js';
 
@@ -170,8 +171,9 @@ router.post(
         currentValue: flag.toObject(),
       });
 
-      // Invalidate cache
+      // Invalidate cache + publish
       await invalidateFlagCache(flag.environmentKey, flag.key);
+      await publishFlagUpdate(flag.environmentKey, flag.key, flag);
 
       res.status(201).json(flag);
     } catch (error) {
@@ -289,7 +291,7 @@ router.patch(
 
       // Invalidate cache + publish
       await invalidateFlagCache(previousFlag.environmentKey, previousFlag.key);
-      await publishFlagUpdate(previousFlag.environmentKey, previousFlag.key, 'flag.updated');
+      await publishFlagUpdate(previousFlag.environmentKey, previousFlag.key, updatedFlag);
 
       // Audit log
       createAuditEntry({
@@ -327,6 +329,7 @@ router.delete('/:key', async (req: Request, res: Response, next: NextFunction) =
     }
 
     await invalidateFlagCache(flag.environmentKey, flag.key);
+    await publishFlagUpdate(flag.environmentKey, flag.key, flag);
 
     // Audit log
     createAuditEntry({
@@ -367,7 +370,7 @@ router.patch('/:key/toggle', async (req: Request, res: Response, next: NextFunct
     ).lean();
 
     await invalidateFlagCache(previousFlag.environmentKey, previousFlag.key);
-    await publishFlagUpdate(previousFlag.environmentKey, previousFlag.key, 'flag.toggled');
+    await publishFlagUpdate(previousFlag.environmentKey, previousFlag.key, updatedFlag);
 
     // Audit log
     createAuditEntry({

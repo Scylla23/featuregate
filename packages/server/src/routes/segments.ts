@@ -4,7 +4,8 @@ import { Segment } from '../models/Segment.js';
 import { Flag } from '../models/Flag.js';
 import { authenticateDashboard } from '../middleware/auth.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
-import { invalidateSegmentCache, publishSegmentUpdate } from '../services/cacheService.js';
+import { invalidateSegmentCache } from '../services/cacheService.js';
+import { publishSegmentUpdate } from '../sse/publisher.js';
 import { createAuditEntry } from '../services/auditService.js';
 import { isUserInSegment } from '@featuregate/evaluator';
 import { toEvalSegment } from '../utils/transformers.js';
@@ -116,6 +117,8 @@ router.post(
         author: { userId: req.user!._id, email: req.user!.email },
         currentValue: segment.toObject(),
       });
+
+      await publishSegmentUpdate(segment.environmentKey, segment.key, segment);
 
       res.status(201).json(segment);
     } catch (error) {
@@ -230,7 +233,7 @@ router.patch(
       ).lean();
 
       await invalidateSegmentCache(previous.environmentKey);
-      await publishSegmentUpdate(previous.environmentKey, previous.key, 'segment.updated');
+      await publishSegmentUpdate(previous.environmentKey, previous.key, updated);
 
       createAuditEntry({
         action: 'segment.updated',
@@ -285,6 +288,7 @@ router.delete('/:key', async (req: Request, res: Response, next: NextFunction) =
     );
 
     await invalidateSegmentCache(segment.environmentKey);
+    await publishSegmentUpdate(segment.environmentKey, segment.key, segment);
 
     createAuditEntry({
       action: 'segment.archived',

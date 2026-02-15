@@ -85,27 +85,3 @@ export async function getCachedSdkPayload<T>(envKey: string): Promise<T | null> 
 export async function setCachedSdkPayload(envKey: string, payload: unknown): Promise<void> {
   await setCache(keys.sdkPayload(envKey), payload, TTL.SDK_PAYLOAD);
 }
-
-// --- Pub/Sub (channel names NOT auto-prefixed by ioredis) ---
-
-export async function publishFlagUpdate(
-  envKey: string,
-  flagKey: string,
-  action: string,
-): Promise<void> {
-  const redis = getRedisClient();
-  const channel = `fg:flag-updates:${envKey}`;
-  const message = JSON.stringify({ type: action, flagKey, timestamp: Date.now() });
-  await redis.publish(channel, message);
-}
-
-export async function publishSegmentUpdate(
-  envKey: string,
-  segmentKey: string,
-  action: string,
-): Promise<void> {
-  const redis = getRedisClient();
-  const channel = `fg:segment-updates:${envKey}`;
-  const message = JSON.stringify({ type: action, segmentKey, timestamp: Date.now() });
-  await redis.publish(channel, message);
-}

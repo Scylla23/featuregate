@@ -1,27 +1,10 @@
 import 'dotenv/config';
-import express from 'express';
 
+import app from './app.js';
 import { connectDatabase } from './config/database.js';
 import { getRedisClient } from './config/redis.js';
-import apiRouter from './routes/index.js';
-import { globalErrorHandler } from './middleware/errorHandler.js';
 
-const app = express();
 const port = parseInt(process.env.PORT || '4000', 10);
-
-// Body parsing
-app.use(express.json({ limit: '1mb' }));
-
-// Health check (no auth)
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-// API v1 routes
-app.use('/api/v1', apiRouter);
-
-// Global error handler (must be last)
-app.use(globalErrorHandler);
 
 // Bootstrap and start
 async function bootstrap() {
