@@ -32,6 +32,8 @@ const segmentSchema = new Schema(
     excluded: [String], // Explicit user IDs (Overrides rules)
     rules: [segmentRuleSchema], // ORed together
     tags: [String],
+    archived: { type: Boolean, default: false, index: true },
+    archivedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );

@@ -1,0 +1,36 @@
+export class AppError extends Error {
+  constructor(
+    public statusCode: number,
+    message: string,
+    public code?: string,
+  ) {
+    super(message);
+    this.name = 'AppError';
+  }
+}
+
+export class NotFoundError extends AppError {
+  constructor(resource: string, identifier: string) {
+    super(404, `${resource} '${identifier}' not found`, 'NOT_FOUND');
+  }
+}
+
+export class ValidationError extends AppError {
+  public details?: unknown;
+  constructor(message: string, details?: unknown) {
+    super(400, message, 'VALIDATION_ERROR');
+    this.details = details;
+  }
+}
+
+export class UnauthorizedError extends AppError {
+  constructor(message = 'Unauthorized') {
+    super(401, message, 'UNAUTHORIZED');
+  }
+}
+
+export class ConflictError extends AppError {
+  constructor(message: string) {
+    super(409, message, 'CONFLICT');
+  }
+}

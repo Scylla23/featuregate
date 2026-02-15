@@ -54,6 +54,8 @@ const flagSchema = new Schema(
     ],
     rules: [ruleSchema],
     tags: [String],
+    archived: { type: Boolean, default: false, index: true },
+    archivedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
