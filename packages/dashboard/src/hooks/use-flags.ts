@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MOCK_FLAGS } from '@/mock/flags';
 import type { Flag, CreateFlagInput, PaginatedResponse, ListFlagsParams } from '@/types/flag';
 
-const ITEMS_PER_PAGE = 5;
+const ITEMS_PER_PAGE = 9;
 
 function filterAndSort(flags: Flag[], params: ListFlagsParams): PaginatedResponse<Flag> {
   let filtered = [...flags];
@@ -74,18 +74,13 @@ export function useToggleFlag() {
         queryKey: ['flags'],
       });
 
-      queryClient.setQueriesData<PaginatedResponse<Flag>>(
-        { queryKey: ['flags'] },
-        (old) => {
-          if (!old) return old;
-          return {
-            ...old,
-            data: old.data.map((f) =>
-              f.key === key ? { ...f, enabled: !f.enabled } : f,
-            ),
-          };
-        },
-      );
+      queryClient.setQueriesData<PaginatedResponse<Flag>>({ queryKey: ['flags'] }, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          data: old.data.map((f) => (f.key === key ? { ...f, enabled: !f.enabled } : f)),
+        };
+      });
 
       return { previousQueries };
     },

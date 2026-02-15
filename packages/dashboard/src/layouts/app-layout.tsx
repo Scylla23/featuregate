@@ -12,7 +12,7 @@ export function AppLayout() {
       <SidebarNav />
       <SidebarInset>
         <TopBar onCreateFlag={() => setCreateModalOpen(true)} />
-        <div className="flex-1 overflow-auto">
+        <div className="flex flex-1 flex-col overflow-hidden">
           <Outlet context={{ createModalOpen, setCreateModalOpen }} />
         </div>
       </SidebarInset>
