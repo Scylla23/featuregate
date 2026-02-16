@@ -18,8 +18,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { TagMultiSelect } from '@/components/tag-multi-select';
 import { useCreateFlag } from '@/hooks/use-flags';
-import { MOCK_TAGS } from '@/mock/flags';
+import { useProject } from '@/providers/project-provider';
 import { toast } from 'sonner';
+
+const DEFAULT_TAGS = ['frontend', 'backend', 'mobile', 'experiment', 'ops', 'beta', 'release'];
 
 const createFlagSchema = z.object({
   name: z.string().min(1, 'Flag name is required').max(256, 'Name must be 256 characters or less'),
@@ -50,6 +52,7 @@ export function CreateFlagModal({ open, onOpenChange }: CreateFlagModalProps) {
   const keyManuallyEdited = useRef(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const createFlag = useCreateFlag();
+  const { activeProjectId, activeEnvironmentKey } = useProject();
 
   const {
     register,
@@ -79,8 +82,8 @@ export function CreateFlagModal({ open, onOpenChange }: CreateFlagModalProps) {
     try {
       await createFlag.mutateAsync({
         ...values,
-        projectId: 'proj_main',
-        environmentKey: 'production',
+        projectId: activeProjectId!,
+        environmentKey: activeEnvironmentKey!,
         variations: [
           { value: true, name: 'True' },
           { value: false, name: 'False' },
@@ -167,7 +170,7 @@ export function CreateFlagModal({ open, onOpenChange }: CreateFlagModalProps) {
           <div className="space-y-2">
             <Label>Tags</Label>
             <TagMultiSelect
-              options={MOCK_TAGS}
+              options={DEFAULT_TAGS}
               selected={selectedTags}
               onSelectedChange={setSelectedTags}
               placeholder="Add tags..."

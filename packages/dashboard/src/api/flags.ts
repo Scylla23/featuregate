@@ -1,7 +1,14 @@
 import { apiFetch } from './client';
-import type { Flag, CreateFlagInput, PaginatedResponse, ListFlagsParams } from '@/types/flag';
+import type { Flag, CreateFlagInput, ListFlagsParams } from '@/types/flag';
 
-export async function listFlags(params: ListFlagsParams): Promise<PaginatedResponse<Flag>> {
+export interface FlagsListResponse {
+  flags: Flag[];
+  total: number;
+  page: number;
+  totalPages: number;
+}
+
+export async function listFlags(params: ListFlagsParams): Promise<FlagsListResponse> {
   const query = new URLSearchParams();
   if (params.page) query.set('page', String(params.page));
   if (params.limit) query.set('limit', String(params.limit));
@@ -11,7 +18,7 @@ export async function listFlags(params: ListFlagsParams): Promise<PaginatedRespo
   if (params.projectId) query.set('projectId', params.projectId);
 
   const qs = query.toString();
-  return apiFetch<PaginatedResponse<Flag>>(`/flags${qs ? `?${qs}` : ''}`);
+  return apiFetch<FlagsListResponse>(`/flags${qs ? `?${qs}` : ''}`);
 }
 
 export async function createFlag(input: CreateFlagInput): Promise<Flag> {

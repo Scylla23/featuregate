@@ -9,6 +9,7 @@ import { FlagsToolbar } from './components/flags-toolbar';
 import { FlagsTable } from './components/flags-table';
 import { FlagsEmptyState } from './components/flags-empty-state';
 import { CreateFlagModal } from './components/create-flag-modal';
+import { useProject } from '@/providers/project-provider';
 import type { AppLayoutContext } from '@/layouts/app-layout';
 import type { ListFlagsParams } from '@/types/flag';
 
@@ -16,6 +17,7 @@ const PAGE_SIZE = 20;
 
 export function FlagsListPage() {
   const { createModalOpen, setCreateModalOpen } = useOutletContext<AppLayoutContext>();
+  const { activeProjectId, activeEnvironmentKey } = useProject();
 
   const [search, setSearch] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -33,13 +35,19 @@ export function FlagsListPage() {
       sortOrder: order as ListFlagsParams['sortOrder'],
       page,
       limit: PAGE_SIZE,
+      projectId: activeProjectId || undefined,
+      environmentKey: activeEnvironmentKey || undefined,
     };
-  }, [debouncedSearch, selectedTags, sortBy, page]);
+  }, [debouncedSearch, selectedTags, sortBy, page, activeProjectId, activeEnvironmentKey]);
 
   const { data, isLoading } = useFlags(params);
 
   // Check if the list is truly empty (no flags at all, not just filtered to zero)
-  const { data: allData } = useFlags({ limit: 1 });
+  const { data: allData } = useFlags({
+    limit: 1,
+    projectId: activeProjectId || undefined,
+    environmentKey: activeEnvironmentKey || undefined,
+  });
   const hasNoFlags = !isLoading && allData?.total === 0;
 
   const total = data?.total ?? 0;

@@ -4,6 +4,7 @@ import flagRoutes from './flags.js';
 import segmentRoutes from './segments.js';
 import sdkRoutes from './sdk.js';
 import auditRoutes from './audit.js';
+import projectRoutes from './projects.js';
 import { sseStreamRouter } from '../sse/index.js';
 
 const router: IRouter = Router();
@@ -15,6 +16,7 @@ router.use('/auth', authRoutes);
 router.use('/flags', flagRoutes);
 router.use('/segments', segmentRoutes);
 router.use('/audit-log', auditRoutes);
+router.use('/projects', projectRoutes);
 
 // SDK routes (SDK key auth applied inside the route file)
 router.use('/sdk', sdkRoutes);

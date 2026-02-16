@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useTheme } from '@/hooks/use-theme';
+import { useProject } from '@/providers/project-provider';
 
 const PAGE_TITLES: Record<string, string> = {
   '/flags': 'Feature Flags',
@@ -38,6 +39,7 @@ interface TopBarProps {
 export function TopBar({ onCreateFlag }: TopBarProps) {
   const location = useLocation();
   const { theme, setTheme } = useTheme();
+  const { environments, activeEnvironmentKey, setActiveEnvironmentKey } = useProject();
   const pageTitle = PAGE_TITLES[location.pathname] || 'Dashboard';
   const showCreateButton = location.pathname === '/flags';
 
@@ -55,17 +57,21 @@ export function TopBar({ onCreateFlag }: TopBarProps) {
       </Breadcrumb>
 
       <div className="ml-auto flex items-center gap-2">
-        <Select defaultValue="production">
-          <SelectTrigger className="h-8 w-[150px] text-xs">
-            <CircleDot className="mr-1 size-3 text-emerald-500" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="production">Production</SelectItem>
-            <SelectItem value="staging">Staging</SelectItem>
-            <SelectItem value="development">Development</SelectItem>
-          </SelectContent>
-        </Select>
+        {activeEnvironmentKey && (
+          <Select value={activeEnvironmentKey} onValueChange={setActiveEnvironmentKey}>
+            <SelectTrigger className="h-8 w-[150px] text-xs">
+              <CircleDot className="mr-1 size-3 text-emerald-500" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {environments.map((env) => (
+                <SelectItem key={env.key} value={env.key}>
+                  {env.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         <Button variant="ghost" size="icon-sm" className="text-muted-foreground">
           <Bell className="size-4" />

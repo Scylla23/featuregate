@@ -52,4 +52,55 @@ router.post(
   },
 );
 
+// ---------------------------------------------------------------------------
+// POST /register — Create a new user account
+// ---------------------------------------------------------------------------
+
+const registerSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+  name: z.string().min(1, 'Name is required'),
+});
+
+router.post(
+  '/register',
+  validateBody(registerSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { email, password, name } = req.body;
+
+      const existing = await User.findOne({ email: email.toLowerCase() });
+      if (existing) {
+        res.status(409).json({ error: 'Email already registered' });
+        return;
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const user = await User.create({
+        email: email.toLowerCase(),
+        hashedPassword,
+        name,
+        role: 'admin',
+      });
+
+      const token = signJwt({
+        userId: user._id.toString(),
+        email: user.email,
+        role: user.role as 'admin' | 'editor' | 'viewer',
+      });
+
+      res.status(201).json({
+        token,
+        user: {
+          email: user.email,
+          name: user.name,
+          role: user.role,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 export default router;

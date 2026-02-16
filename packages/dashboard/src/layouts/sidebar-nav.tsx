@@ -1,4 +1,5 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/hooks/use-auth';
 import {
   Flag,
   Users,
@@ -38,6 +39,17 @@ const navItems = [
 
 export function SidebarNav() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
+  const initials = user?.name
+    ? user.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
+    : '??';
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login', { replace: true });
+  };
 
   return (
     <Sidebar collapsible="icon">
@@ -94,13 +106,13 @@ export function SidebarNav() {
                 >
                   <Avatar className="size-8 rounded-lg">
                     <AvatarFallback className="rounded-lg bg-primary/10 text-xs font-medium">
-                      AC
+                      {initials}
                     </AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold">Alex Chen</span>
+                    <span className="truncate font-semibold">{user?.name ?? 'User'}</span>
                     <span className="truncate text-xs text-muted-foreground">
-                      alex@featuregate.io
+                      {user?.email ?? ''}
                     </span>
                   </div>
                   <ChevronsUpDown className="ml-auto size-4" />
@@ -115,16 +127,16 @@ export function SidebarNav() {
                 <div className="flex items-center gap-2 px-2 py-1.5">
                   <Avatar className="size-8 rounded-lg">
                     <AvatarFallback className="rounded-lg bg-primary/10 text-xs font-medium">
-                      AC
+                      {initials}
                     </AvatarFallback>
                   </Avatar>
                   <div className="grid text-left text-sm leading-tight">
-                    <span className="font-semibold">Alex Chen</span>
-                    <span className="text-xs text-muted-foreground">Admin</span>
+                    <span className="font-semibold">{user?.name ?? 'User'}</span>
+                    <span className="text-xs text-muted-foreground">{user?.role ?? ''}</span>
                   </div>
                 </div>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>
+                <DropdownMenuItem onSelect={handleLogout}>
                   <LogOut className="mr-2 size-4" />
                   Sign out
                 </DropdownMenuItem>
