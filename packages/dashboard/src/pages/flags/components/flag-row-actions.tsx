@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { MoreVertical, Pencil, Copy, History, Archive } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,6 +15,8 @@ interface FlagRowActionsProps {
 }
 
 export function FlagRowActions({ flagKey }: FlagRowActionsProps) {
+  const navigate = useNavigate();
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -23,7 +26,7 @@ export function FlagRowActions({ flagKey }: FlagRowActionsProps) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuItem>
+        <DropdownMenuItem onClick={() => navigate(`/flags/${flagKey}`)}>
           <Pencil className="mr-2 size-4" />
           Edit Flag
         </DropdownMenuItem>

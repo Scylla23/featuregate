@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import {
   Table,
@@ -66,7 +67,12 @@ export function FlagsTable({ flags, isLoading, skeletonRows = 8 }: FlagsTablePro
                 <TableCell>
                   <div className="flex items-start gap-1">
                     <div className="min-w-0">
-                      <p className="truncate font-medium">{flag.name}</p>
+                      <Link
+                        to={`/flags/${flag.key}`}
+                        className="truncate font-medium hover:underline"
+                      >
+                        {flag.name}
+                      </Link>
                       <div className="flex items-center gap-1">
                         <code className="text-xs text-muted-foreground">{flag.key}</code>
                         <CopyButton value={flag.key} />

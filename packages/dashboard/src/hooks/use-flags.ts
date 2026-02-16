@@ -1,6 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listFlags, createFlag, toggleFlag } from '@/api/flags';
-import type { Flag, CreateFlagInput, PaginatedResponse, ListFlagsParams } from '@/types/flag';
+import { listFlags, getFlag, createFlag, updateFlag, toggleFlag, evaluateFlag } from '@/api/flags';
+import type {
+  Flag,
+  CreateFlagInput,
+  UpdateFlagInput,
+  PaginatedResponse,
+  ListFlagsParams,
+} from '@/types/flag';
 
 export function useFlags(params: ListFlagsParams) {
   return useQuery({
@@ -54,6 +60,27 @@ export function useToggleFlag() {
   });
 }
 
+export function useFlag(key: string | undefined) {
+  return useQuery({
+    queryKey: ['flag', key],
+    queryFn: () => getFlag(key!),
+    enabled: !!key,
+  });
+}
+
+export function useUpdateFlag() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ key, input }: { key: string; input: UpdateFlagInput }) =>
+      updateFlag(key, input),
+    onSuccess: (updatedFlag) => {
+      queryClient.setQueryData(['flag', updatedFlag.key], updatedFlag);
+      queryClient.invalidateQueries({ queryKey: ['flags'] });
+    },
+  });
+}
+
 export function useCreateFlag() {
   const queryClient = useQueryClient();
 
@@ -64,5 +91,21 @@ export function useCreateFlag() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['flags'] });
     },
+  });
+}
+
+export function useEvaluateFlag() {
+  return useMutation({
+    mutationFn: ({
+      flagKey,
+      context,
+      projectId,
+      environmentKey,
+    }: {
+      flagKey: string;
+      context: Record<string, unknown>;
+      projectId: string;
+      environmentKey: string;
+    }) => evaluateFlag(flagKey, context, projectId, environmentKey),
   });
 }

@@ -21,6 +21,7 @@ export interface RolloutVariation {
 export interface Rollout {
   variations: RolloutVariation[];
   bucketBy?: string;
+  seed?: number;
 }
 
 export interface Rule {
@@ -69,6 +70,46 @@ export interface CreateFlagInput {
   offVariation: number;
   fallthrough?: { variation?: number };
   tags?: string[];
+}
+
+export interface UpdateFlagInput {
+  name?: string;
+  description?: string;
+  enabled?: boolean;
+  variations?: Variation[];
+  offVariation?: number;
+  fallthrough?: {
+    variation?: number;
+    rollout?: {
+      variations?: RolloutVariation[];
+      bucketBy?: string;
+      seed?: number;
+    };
+  };
+  targets?: Target[];
+  rules?: Array<{
+    id: string;
+    description?: string;
+    clauses: Clause[];
+    rollout?: {
+      variation?: number;
+      variations?: RolloutVariation[];
+      bucketBy?: string;
+      seed?: number;
+    };
+  }>;
+  tags?: string[];
+}
+
+export interface EvaluateResult {
+  flagKey: string;
+  value: VariationValue;
+  variationIndex: number;
+  reason: {
+    kind: string;
+    ruleIndex?: number;
+    ruleId?: string;
+  };
 }
 
 export interface PaginatedResponse<T> {

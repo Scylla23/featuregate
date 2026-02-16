@@ -1,5 +1,11 @@
 import { apiFetch } from './client';
-import type { Flag, CreateFlagInput, ListFlagsParams } from '@/types/flag';
+import type {
+  Flag,
+  CreateFlagInput,
+  UpdateFlagInput,
+  ListFlagsParams,
+  EvaluateResult,
+} from '@/types/flag';
 
 export interface FlagsListResponse {
   flags: Flag[];
@@ -34,8 +40,31 @@ export async function toggleFlag(key: string): Promise<Flag> {
   });
 }
 
+export async function getFlag(key: string): Promise<Flag> {
+  return apiFetch<Flag>(`/flags/${key}`);
+}
+
+export async function updateFlag(key: string, input: UpdateFlagInput): Promise<Flag> {
+  return apiFetch<Flag>(`/flags/${key}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
 export async function deleteFlag(key: string): Promise<void> {
   await apiFetch(`/flags/${key}`, {
     method: 'DELETE',
+  });
+}
+
+export async function evaluateFlag(
+  flagKey: string,
+  context: Record<string, unknown>,
+  projectId: string,
+  environmentKey: string,
+): Promise<EvaluateResult> {
+  return apiFetch<EvaluateResult>(`/flags/${flagKey}/evaluate`, {
+    method: 'POST',
+    body: JSON.stringify({ context, projectId, environmentKey }),
   });
 }

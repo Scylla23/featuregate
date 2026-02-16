@@ -1,11 +1,15 @@
 import { Router, type Router as IRouter, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { Flag } from '../models/Flag.js';
+import { Segment } from '../models/Segment.js';
 import { authenticateDashboard } from '../middleware/auth.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import { invalidateFlagCache } from '../services/cacheService.js';
 import { publishFlagUpdate } from '../sse/publisher.js';
 import { createAuditEntry } from '../services/auditService.js';
+import { toEvalFlag, toEvalSegment, buildSegmentIdToKeyMap } from '../utils/transformers.js';
+import { evaluate } from '@featuregate/evaluator';
+import type { Segment as EvalSegment } from '@featuregate/evaluator';
 import { NotFoundError, ConflictError, ValidationError } from '../utils/errors.js';
 
 const router: IRouter = Router();
@@ -42,6 +46,8 @@ const rolloutSchema = z.object({
       }),
     )
     .optional(),
+  bucketBy: z.string().optional(),
+  seed: z.number().int().optional(),
 });
 
 const ruleSchema = z.object({
@@ -77,6 +83,8 @@ const createFlagSchema = z.object({
               }),
             )
             .optional(),
+          bucketBy: z.string().optional(),
+          seed: z.number().int().optional(),
         })
         .optional(),
     })
@@ -112,6 +120,8 @@ const updateFlagSchema = z.object({
               }),
             )
             .optional(),
+          bucketBy: z.string().optional(),
+          seed: z.number().int().optional(),
         })
         .optional(),
     })
@@ -389,5 +399,77 @@ router.patch('/:key/toggle', async (req: Request, res: Response, next: NextFunct
     next(error);
   }
 });
+
+// ---------------------------------------------------------------------------
+// POST /:key/evaluate — Evaluate flag with context (dashboard tester)
+// ---------------------------------------------------------------------------
+
+const dashboardEvaluateSchema = z.object({
+  context: z
+    .object({
+      key: z.string().min(1),
+    })
+    .passthrough(),
+  projectId: z.string().min(1),
+  environmentKey: z.string().min(1),
+});
+
+router.post(
+  '/:key/evaluate',
+  validateBody(dashboardEvaluateSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { context, projectId, environmentKey } = req.body;
+      const flagKey = req.params.key;
+
+      const [flags, segments] = await Promise.all([
+        Flag.find({
+          projectId,
+          environmentKey,
+          archived: { $ne: true },
+        }).lean(),
+        Segment.find({
+          projectId,
+          environmentKey,
+          archived: { $ne: true },
+        }).lean(),
+      ]);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const flagDoc = flags.find((f: any) => f.key === flagKey);
+      if (!flagDoc) {
+        throw new NotFoundError('Flag', flagKey);
+      }
+
+      const segmentIdToKeyMap = buildSegmentIdToKeyMap(
+        segments as Array<{ _id: unknown; key: string }>,
+      );
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const evalFlag = toEvalFlag(flagDoc as any, segmentIdToKeyMap);
+
+      const segmentsMap = new Map<string, EvalSegment>();
+      for (const seg of segments) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        segmentsMap.set(seg.key, toEvalSegment(seg as any));
+      }
+
+      const result = evaluate(evalFlag, context, segmentsMap);
+
+      const reason: Record<string, unknown> = { kind: result.reason };
+      if (result.ruleIndex !== undefined) reason.ruleIndex = result.ruleIndex;
+      if (result.ruleId !== undefined) reason.ruleId = result.ruleId;
+
+      res.json({
+        flagKey,
+        value: result.value,
+        variationIndex: result.variationIndex,
+        reason,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 export default router;
