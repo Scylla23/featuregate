@@ -67,7 +67,7 @@ Feature flags shouldn't cost $10/seat/month or require a PhD to self-host. Featu
 Create boolean or multivariate flags with any JSON variation value. Toggle flags on/off instantly. Set a default "off" variation and a fallthrough rule for when targeting is on but no rules match.
 
 ### 🎯 Segments & Targeting Rules
-Define reusable user segments with rule-based membership (e.g., "plan is enterprise AND country is US") or explicit include/exclude lists. Target segments across multiple flags — manage your audience in one place. Rules support 12 operators: `in`, `notIn`, `contains`, `startsWith`, `endsWith`, `matches`, `greaterThan`, `lessThan`, `semverEqual`, `semverGreaterThan`, `semverLessThan`, and `segmentMatch`.
+Define reusable user segments with rule-based membership (e.g., "plan is enterprise AND country is US") or explicit include/exclude lists. Target segments across multiple flags — manage your audience in one place. Rules support 22+ operators including `in`, `notIn`, `contains`, `startsWith`, `endsWith`, `matches`, `greaterThan`, `lessThan`, `equals`, `notEquals`, `semverEquals`, `semverGreaterThan`, `semverLessThan`, `before`, `after`, `exists`, `notExists`, and `segmentMatch`.
 
 ### 📊 Percentage Rollouts
 Gradually roll out features to a percentage of users using consistent hashing (MurmurHash). The same user always gets the same variation — no flickering. Roll out by user ID, company ID, or any custom attribute.
@@ -87,36 +87,56 @@ Every flag and segment change is logged with who changed what, when, and a full 
 
 ### Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/)
+- [Node.js](https://nodejs.org/) >= 20
+- [pnpm](https://pnpm.io/) >= 10.7.0
+- [Docker](https://docs.docker.com/get-docker/) (for MongoDB + Redis)
 
-### 1. Clone and start
+### 1. Clone and install
 
 ```bash
 git clone https://github.com/pavankushnure/featuregate.git
 cd featuregate
-docker compose up -d
+pnpm install
 ```
 
-This starts the API server, dashboard, MongoDB, and Redis.
+### 2. Start infrastructure
 
-### 2. Open the dashboard
+```bash
+pnpm docker:up   # Starts MongoDB + Redis containers
+```
 
-Navigate to [http://localhost:5173](http://localhost:5173). The demo instance comes pre-loaded with sample flags and segments.
+### 3. Seed demo data
 
-### 3. Install the SDK
+```bash
+pnpm -F @featuregate/server run seed
+```
+
+### 4. Start development servers
+
+```bash
+pnpm dev   # Starts API server (port 4000) + Dashboard (port 3000)
+```
+
+### 5. Open the dashboard
+
+Navigate to [http://localhost:3000](http://localhost:3000).
+
+Login with: `admin@featuregate.io` / `password123`
+
+### 6. Install the SDK (coming soon)
 
 ```bash
 npm install @featuregate/node-sdk
 ```
 
-### 4. Evaluate your first flag
+### 7. Evaluate your first flag
 
 ```typescript
 import { FeatureGateClient } from '@featuregate/node-sdk';
 
 const client = new FeatureGateClient({
   sdkKey: 'sdk-dev-xxxxx', // shown in dashboard Settings
-  baseUrl: 'http://localhost:3000',
+  baseUrl: 'http://localhost:4000',
 });
 
 await client.waitForInitialization();
@@ -131,11 +151,13 @@ const showNewCheckout = client.isEnabled('new-checkout', {
 console.log('New checkout enabled:', showNewCheckout);
 ```
 
-That's it. The SDK caches all flag data in memory and evaluates locally — no network call per flag check.
+The SDK caches all flag data in memory and evaluates locally — no network call per flag check.
 
 ---
 
 ## SDK Usage
+
+> **Note**: The Node.js SDK is under active development. The examples below show the planned API interface.
 
 ### Initialization
 
@@ -229,7 +251,8 @@ client.close(); // closes SSE connection and flushes pending events
   ┌───────────────┐    REST API     ┌────────────────────┐
   │  React         │ <──────────── > │   Node.js/Express   │
   │  Dashboard     │    SSE         │   API Server         │
-  │  (oat.ink UI)  │               │                      │
+  │  (Tailwind +   │               │                      │
+  │   shadcn/ui)   │               │                      │
   └───────────────┘                └─────────┬────────────┘
                                              │
                                 ┌────────────┼────────────┐
@@ -334,7 +357,7 @@ This segment includes:
 
 ## API Reference
 
-All endpoints are prefixed with `/api/v1`. Authentication via `X-API-Key` header (SDK key) or session cookie (dashboard).
+All endpoints are prefixed with `/api/v1`. Authentication via `X-API-Key` header (SDK endpoints) or JWT Bearer token (dashboard endpoints).
 
 ### Flags
 
@@ -383,7 +406,7 @@ All endpoints are prefixed with `/api/v1`. Authentication via `X-API-Key` header
 | API Server | Node.js, Express, TypeScript |
 | Database | MongoDB (Mongoose) |
 | Cache & Pub/Sub | Redis (ioredis) |
-| Dashboard | React, Vite, oat.ink, dnd-kit |
+| Dashboard | React 18, Vite 5, Tailwind CSS, shadcn/ui, TanStack Query, dnd-kit |
 | SDK | TypeScript, EventSource (SSE), MurmurHash |
 | Testing | Jest, Supertest |
 | DevOps | Docker, Docker Compose, GitHub Actions |
@@ -412,16 +435,16 @@ featuregate/
 │   │   └── src/
 │   │       ├── pages/
 │   │       ├── components/
-│   │       └── api/
+│   │       ├── hooks/
+│   │       ├── api/
+│   │       ├── providers/
+│   │       └── layouts/
 │   └── sdk-node/        # Published npm SDK
 │       └── src/
 │           ├── client.ts
 │           ├── store.ts
 │           └── sse.ts
-├── docker-compose.yml
-├── .github/workflows/
-├── LICENSE
-├── CONTRIBUTING.md
+├── docker-compose.yaml
 └── README.md
 ```
 
@@ -431,22 +454,22 @@ The evaluation engine is a **shared package** imported by both the server and th
 
 ## Deployment
 
-### Railway (recommended)
+### Development (Docker Compose)
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/template/featuregate)
-
-### Docker Compose (self-hosted)
+The local development setup uses Docker for MongoDB and Redis, with the server and dashboard running natively via Node.js:
 
 ```bash
-git clone https://github.com/pavankushnure/featuregate.git
-cd featuregate
-
-# Copy and edit environment variables
-cp .env.example .env
-
-# Start everything
-docker compose -f docker-compose.prod.yml up -d
+pnpm docker:up                          # Start MongoDB + Redis
+pnpm -F @featuregate/server run seed    # Seed demo data
+pnpm dev                                # Start server + dashboard
 ```
+
+### Production (Coming Soon)
+
+Production Dockerfiles and deployment configurations are planned. The target infrastructure includes:
+- **Multi-stage Docker builds** for server (Node.js alpine) and dashboard (Nginx)
+- **GitHub Actions CI/CD** with staging/production environment promotion
+- **Terraform IaC** for AWS (ECS Fargate) or GCP (Cloud Run)
 
 ### Environment Variables
 
@@ -454,9 +477,9 @@ docker compose -f docker-compose.prod.yml up -d
 |---|---|---|
 | `MONGODB_URI` | MongoDB connection string | `mongodb://localhost:27017/featuregate` |
 | `REDIS_URL` | Redis connection string | `redis://localhost:6379` |
-| `PORT` | API server port | `3000` |
-| `DASHBOARD_URL` | Dashboard URL (for CORS) | `http://localhost:5173` |
-| `JWT_SECRET` | Secret for dashboard auth tokens | — |
+| `PORT` | API server port | `4000` |
+| `NODE_ENV` | Environment | `development` |
+| `JWT_SECRET` | Secret for dashboard auth tokens | `dev-secret-change-in-production` |
 
 ---
 
@@ -468,45 +491,55 @@ git clone https://github.com/pavankushnure/featuregate.git
 cd featuregate
 
 # Install dependencies
-npm install
+pnpm install
 
 # Start MongoDB and Redis
-docker compose up -d mongo redis
+pnpm docker:up
 
 # Seed the database with demo data
-npm run seed -w packages/server
+pnpm -F @featuregate/server run seed
 
-# Start the API server (with hot reload)
-npm run dev -w packages/server
+# Start all packages (server + dashboard) via Turbo
+pnpm dev
 
-# Start the dashboard (in a separate terminal)
-npm run dev -w packages/dashboard
+# Or start individually:
+pnpm -F @featuregate/server dev       # API server (port 4000)
+pnpm -F @featuregate/dashboard dev    # Dashboard (port 3000)
 ```
 
 ### Running tests
 
 ```bash
 # Run all tests
-npm test
+pnpm test
 
 # Run evaluator tests (the core algorithm)
-npm test -w packages/evaluator
+pnpm -F @featuregate/evaluator test
 
 # Run API integration tests
-npm test -w packages/server
+pnpm -F @featuregate/server test
 ```
 
 ---
 
 ## Roadmap
 
-- [x] Core evaluation engine with 12 operators
-- [x] Segments with rule-based targeting
+- [x] Core evaluation engine with 22+ operators
+- [x] Segments with rule-based targeting (server-side)
 - [x] Percentage rollouts (consistent hashing)
-- [x] Real-time SSE propagation
-- [x] Node.js SDK
-- [x] Management dashboard
-- [x] Audit log
+- [x] Real-time SSE propagation (server-side)
+- [x] REST API (flags, segments, audit log, SDK endpoints)
+- [x] JWT + SDK key authentication
+- [x] Redis caching with TTLs
+- [x] Dashboard: Auth (login/register)
+- [x] Dashboard: Flags list with search, pagination, filtering
+- [ ] Dashboard: Flag detail with targeting rule builder
+- [ ] Dashboard: Segments management UI
+- [ ] Dashboard: Audit log viewer
+- [ ] Dashboard: Settings page
+- [ ] Node.js SDK implementation
+- [ ] Dockerfiles (server + dashboard)
+- [ ] CI/CD with GitHub Actions
 - [ ] Scheduled flag changes (turn on/off at a specific time)
 - [ ] Flag lifecycle management (stale flag detection)
 - [ ] React SDK for client-side evaluation
