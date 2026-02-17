@@ -1,0 +1,15 @@
+node_modules
+.pnpm-store
+.turbo
+.git
+.github
+.env*
+.DS_Store
+.idea
+.vscode
+coverage
+*.md
+!packages/*/README.md
+packages/website
+packages/sdk-node
+infra
