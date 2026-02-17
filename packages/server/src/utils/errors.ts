@@ -34,3 +34,9 @@ export class ConflictError extends AppError {
     super(409, message, 'CONFLICT');
   }
 }
+
+export class ForbiddenError extends AppError {
+  constructor(message = 'Insufficient permissions') {
+    super(403, message, 'FORBIDDEN');
+  }
+}

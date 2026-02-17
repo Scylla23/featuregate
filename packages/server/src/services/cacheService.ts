@@ -66,6 +66,12 @@ export async function invalidateSegmentCache(envKey: string): Promise<void> {
   ]);
 }
 
+// --- SDK key cache invalidation (for key rotation) ---
+
+export async function invalidateSdkKeyCache(sdkKey: string): Promise<void> {
+  await deleteCache(keys.sdkKey(sdkKey));
+}
+
 // --- SDK key cache ---
 
 export async function getCachedSdkKey<T>(sdkKey: string): Promise<T | null> {

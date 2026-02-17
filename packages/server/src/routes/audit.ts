@@ -16,7 +16,7 @@ router.use(authenticateDashboard);
 const auditQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  resourceType: z.enum(['flag', 'segment']).optional(),
+  resourceType: z.enum(['flag', 'segment', 'environment', 'member', 'apikey', 'project']).optional(),
   resourceKey: z.string().optional(),
   action: z.string().optional(),
   author: z.string().optional(),

@@ -10,7 +10,7 @@ const auditLogSchema = new Schema(
     resourceType: {
       type: String,
       required: true,
-      enum: ['flag', 'segment'],
+      enum: ['flag', 'segment', 'environment', 'member', 'apikey', 'project'],
       index: true,
     },
     resourceKey: { type: String, required: true, index: true },

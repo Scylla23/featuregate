@@ -8,10 +8,10 @@ interface AuditAuthor {
 
 interface CreateAuditEntryParams {
   action: string;
-  resourceType: 'flag' | 'segment';
+  resourceType: 'flag' | 'segment' | 'environment' | 'member' | 'apikey' | 'project';
   resourceKey: string;
   projectId: Types.ObjectId;
-  environmentKey: string;
+  environmentKey?: string;
   author: AuditAuthor;
   previousValue?: Record<string, unknown> | null;
   currentValue?: Record<string, unknown> | null;
@@ -57,7 +57,7 @@ export async function createAuditEntry(params: CreateAuditEntryParams): Promise<
       resourceType: params.resourceType,
       resourceKey: params.resourceKey,
       projectId: params.projectId,
-      environmentKey: params.environmentKey,
+      environmentKey: params.environmentKey ?? '',
       author: params.author,
       previousValue: params.previousValue ?? null,
       currentValue: params.currentValue ?? null,

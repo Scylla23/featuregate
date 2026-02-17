@@ -9,19 +9,9 @@ import { FlagDetailPage } from '@/pages/flags/flag-detail-page';
 import { SegmentsListPage } from '@/pages/segments/segments-list-page';
 import { SegmentDetailPage } from '@/pages/segments/segment-detail-page';
 import { AuditLogPage } from '@/pages/audit-log/audit-log-page';
+import { SettingsPage } from '@/pages/settings/settings-page';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/sonner';
-
-function PlaceholderPage({ title }: { title: string }) {
-  return (
-    <div className="flex flex-1 items-center justify-center p-6">
-      <div className="text-center">
-        <h2 className="text-lg font-semibold">{title}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Coming soon</p>
-      </div>
-    </div>
-  );
-}
 
 function App() {
   return (
@@ -38,7 +28,7 @@ function App() {
               <Route path="/segments" element={<SegmentsListPage />} />
               <Route path="/segments/:segmentKey" element={<SegmentDetailPage />} />
               <Route path="/audit-log" element={<AuditLogPage />} />
-              <Route path="/settings" element={<PlaceholderPage title="Settings" />} />
+              <Route path="/settings" element={<SettingsPage />} />
             </Route>
           </Routes>
           </ErrorBoundary>

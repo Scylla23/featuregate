@@ -13,6 +13,7 @@ declare global {
         _id: Types.ObjectId;
         email: string;
         role: 'admin' | 'editor' | 'viewer';
+        projectRole?: 'owner' | 'admin' | 'developer' | 'viewer';
       };
     }
   }
