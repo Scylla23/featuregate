@@ -1,9 +1,13 @@
 import express, { type Express } from 'express';
+import cors from 'cors';
 
 import apiRouter from './routes/index.js';
 import { globalErrorHandler } from './middleware/errorHandler.js';
 
 const app: Express = express();
+
+// CORS
+app.use(cors());
 
 // Body parsing
 app.use(express.json({ limit: '1mb' }));

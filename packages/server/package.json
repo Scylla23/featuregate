@@ -15,6 +15,7 @@
     "dependencies": {
         "@featuregate/evaluator": "workspace:^",
         "bcryptjs": "^3.0.3",
+        "cors": "^2.8.6",
         "dotenv": "^17.3.1",
         "express": "^4.19.2",
         "ioredis": "^5.9.3",
@@ -24,6 +25,7 @@
     },
     "devDependencies": {
         "@types/bcryptjs": "^3.0.0",
+        "@types/cors": "^2.8.19",
         "@types/express": "^4.17.21",
         "@types/express-serve-static-core": "^5.1.1",
         "@types/jest": "^29.5.0",

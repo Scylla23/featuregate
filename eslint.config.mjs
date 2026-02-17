@@ -26,9 +26,9 @@ export default tseslint.config(
     },
   },
 
-  // 2. React Config (Applies ONLY to Dashboard)
+  // 2. React Config (Applies to Dashboard and Website)
   {
-    files: ["packages/dashboard/**/*.{ts,tsx}"],
+    files: ["packages/{dashboard,website}/**/*.{ts,tsx}"],
     languageOptions: {
       globals: globals.browser,
     },
