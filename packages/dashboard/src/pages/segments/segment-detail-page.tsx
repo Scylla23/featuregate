@@ -1,11 +1,24 @@
-import { useEffect } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Loader2, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSegment, useUpdateSegment } from '@/hooks/use-segments';
 import { useSegmentForm } from '@/hooks/use-segment-form';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { ResourceHistory } from '@/components/resource-history';
 import { SegmentDetailHeader } from './components/segment-detail-header';
 import { SegmentFlagReferences } from './components/segment-flag-references';
 import { SegmentTargets } from './components/segment-targets';
@@ -17,19 +30,11 @@ export function SegmentDetailPage() {
   const { data: segment, isLoading, error } = useSegment(segmentKey);
   const { state, dispatch, isDirty, getPayload, reset } = useSegmentForm(segment);
   const updateSegment = useUpdateSegment();
+  const [activeTab, setActiveTab] = useState('details');
 
-  // Unsaved changes guard
-  useEffect(() => {
-    if (!isDirty) return;
-    const handler = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-    };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [isDirty]);
+  const blocker = useUnsavedChangesGuard(isDirty);
 
   const handleSave = async () => {
-    // Validation
     if (!state.name.trim()) {
       toast.error('Segment name is required');
       return;
@@ -91,23 +96,40 @@ export function SegmentDetailPage() {
         updatedAt={segment.updatedAt}
       />
 
-      <div className="flex-1 space-y-6 overflow-auto p-6">
-        <SegmentFlagReferences segmentKey={segmentKey!} />
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-1 flex-col overflow-hidden">
+        <div className="border-b px-6">
+          <TabsList className="h-9">
+            <TabsTrigger value="details" className="text-xs">Details</TabsTrigger>
+            <TabsTrigger value="history" className="text-xs">History</TabsTrigger>
+          </TabsList>
+        </div>
 
-        <SegmentTargets
-          included={state.included}
-          excluded={state.excluded}
-          dispatch={dispatch}
-        />
+        <TabsContent value="details" className="flex-1 overflow-auto m-0">
+          <div className="space-y-6 p-6">
+            <SegmentFlagReferences segmentKey={segmentKey!} />
 
-        <SegmentRuleBuilder
-          rules={state.rules}
-          dispatch={dispatch}
-        />
-      </div>
+            <SegmentTargets
+              included={state.included}
+              excluded={state.excluded}
+              dispatch={dispatch}
+            />
+
+            <SegmentRuleBuilder
+              rules={state.rules}
+              dispatch={dispatch}
+            />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="history" className="flex-1 overflow-auto m-0">
+          <div className="p-6">
+            <ResourceHistory resourceType="segment" resourceKey={segmentKey!} />
+          </div>
+        </TabsContent>
+      </Tabs>
 
       {/* Sticky save bar */}
-      {isDirty && (
+      {isDirty && activeTab === 'details' && (
         <div className="flex items-center justify-between border-t bg-background px-6 py-3">
           <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
             You have unsaved changes
@@ -123,6 +145,27 @@ export function SegmentDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Navigation blocker dialog */}
+      <AlertDialog open={blocker.state === 'blocked'}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unsaved changes</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes. Are you sure you want to leave? Your changes will be lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => blocker.reset?.()}>Stay</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => blocker.proceed?.()}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Discard & Leave
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

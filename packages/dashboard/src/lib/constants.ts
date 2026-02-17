@@ -47,3 +47,55 @@ export const REASON_LABELS: Record<string, { label: string; color: string }> = {
     color: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
   },
 };
+
+export const AUDIT_ACTION_LABELS: Record<string, { label: string; color: string }> = {
+  'flag.created': {
+    label: 'Created',
+    color: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+  },
+  'flag.updated': {
+    label: 'Updated',
+    color: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
+  },
+  'flag.toggled': {
+    label: 'Toggled',
+    color: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300',
+  },
+  'flag.archived': {
+    label: 'Archived',
+    color: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
+  },
+  'segment.created': {
+    label: 'Created',
+    color: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+  },
+  'segment.updated': {
+    label: 'Updated',
+    color: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
+  },
+  'segment.archived': {
+    label: 'Archived',
+    color: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
+  },
+};
+
+export const AUDIT_DATE_PRESETS = [
+  { label: 'Last 24 hours', value: '24h' },
+  { label: 'Last 7 days', value: '7d' },
+  { label: 'Last 30 days', value: '30d' },
+  { label: 'Custom', value: 'custom' },
+] as const;
+
+export const AUDIT_RESOURCE_TYPES = [
+  { label: 'All Resources', value: '' },
+  { label: 'Flags', value: 'flag' },
+  { label: 'Segments', value: 'segment' },
+] as const;
+
+export const AUDIT_ACTIONS = [
+  { label: 'All Actions', value: '' },
+  { label: 'Created', value: 'created' },
+  { label: 'Updated', value: 'updated' },
+  { label: 'Toggled', value: 'toggled' },
+  { label: 'Archived', value: 'archived' },
+] as const;

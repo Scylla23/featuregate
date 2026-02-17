@@ -1,11 +1,24 @@
-import { useEffect } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Loader2, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { useFlag, useUpdateFlag } from '@/hooks/use-flags';
 import { useFlagForm } from '@/hooks/use-flag-form';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { ResourceHistory } from '@/components/resource-history';
 import { FlagDetailHeader } from './components/flag-detail-header';
 import { VariationsEditor } from './components/variations-editor';
 import { IndividualTargets } from './components/individual-targets';
@@ -18,19 +31,11 @@ export function FlagDetailPage() {
   const { data: flag, isLoading, error } = useFlag(flagKey);
   const { state, dispatch, isDirty, getPayload, reset } = useFlagForm(flag);
   const updateFlag = useUpdateFlag();
+  const [activeTab, setActiveTab] = useState('targeting');
 
-  // Unsaved changes guard
-  useEffect(() => {
-    if (!isDirty) return;
-    const handler = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-    };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [isDirty]);
+  const blocker = useUnsavedChangesGuard(isDirty);
 
   const handleSave = async () => {
-    // Basic validation
     if (state.variations.length < 2) {
       toast.error('At least 2 variations are required');
       return;
@@ -39,7 +44,6 @@ export function FlagDetailPage() {
       toast.error('Off variation index is out of bounds');
       return;
     }
-    // Validate rollout weights (only when rollout has actual entries)
     for (const rule of state.rules) {
       if (rule.rollout?.variations?.length) {
         const sum = rule.rollout.variations.reduce((s, rv) => s + rv.weight, 0);
@@ -103,36 +107,53 @@ export function FlagDetailPage() {
         updatedAt={flag.updatedAt}
       />
 
-      <div className="flex-1 space-y-6 overflow-auto p-6">
-        <VariationsEditor
-          variations={state.variations}
-          offVariation={state.offVariation}
-          dispatch={dispatch}
-        />
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-1 flex-col overflow-hidden">
+        <div className="border-b px-6">
+          <TabsList className="h-9">
+            <TabsTrigger value="targeting" className="text-xs">Targeting</TabsTrigger>
+            <TabsTrigger value="history" className="text-xs">History</TabsTrigger>
+          </TabsList>
+        </div>
 
-        <IndividualTargets
-          targets={state.targets}
-          variations={state.variations}
-          dispatch={dispatch}
-        />
+        <TabsContent value="targeting" className="flex-1 overflow-auto m-0">
+          <div className="space-y-6 p-6">
+            <VariationsEditor
+              variations={state.variations}
+              offVariation={state.offVariation}
+              dispatch={dispatch}
+            />
 
-        <RuleBuilder
-          rules={state.rules}
-          variations={state.variations}
-          dispatch={dispatch}
-        />
+            <IndividualTargets
+              targets={state.targets}
+              variations={state.variations}
+              dispatch={dispatch}
+            />
 
-        <DefaultRule
-          fallthrough={state.fallthrough}
-          variations={state.variations}
-          offVariation={state.offVariation}
-          enabled={state.enabled}
-          dispatch={dispatch}
-        />
-      </div>
+            <RuleBuilder
+              rules={state.rules}
+              variations={state.variations}
+              dispatch={dispatch}
+            />
+
+            <DefaultRule
+              fallthrough={state.fallthrough}
+              variations={state.variations}
+              offVariation={state.offVariation}
+              enabled={state.enabled}
+              dispatch={dispatch}
+            />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="history" className="flex-1 overflow-auto m-0">
+          <div className="p-6">
+            <ResourceHistory resourceType="flag" resourceKey={flagKey!} />
+          </div>
+        </TabsContent>
+      </Tabs>
 
       {/* Sticky save bar */}
-      {isDirty && (
+      {isDirty && activeTab === 'targeting' && (
         <div className="flex items-center justify-between border-t bg-background px-6 py-3">
           <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
             You have unsaved changes
@@ -148,6 +169,27 @@ export function FlagDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Navigation blocker dialog */}
+      <AlertDialog open={blocker.state === 'blocked'}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unsaved changes</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes. Are you sure you want to leave? Your changes will be lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => blocker.reset?.()}>Stay</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => blocker.proceed?.()}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Discard & Leave
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

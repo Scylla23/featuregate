@@ -8,6 +8,8 @@ import { FlagsListPage } from '@/pages/flags/flags-list-page';
 import { FlagDetailPage } from '@/pages/flags/flag-detail-page';
 import { SegmentsListPage } from '@/pages/segments/segments-list-page';
 import { SegmentDetailPage } from '@/pages/segments/segment-detail-page';
+import { AuditLogPage } from '@/pages/audit-log/audit-log-page';
+import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/sonner';
 
 function PlaceholderPage({ title }: { title: string }) {
@@ -26,6 +28,7 @@ function App() {
     <QueryProvider>
       <AuthProvider>
         <BrowserRouter>
+          <ErrorBoundary>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route element={<AppLayout />}>
@@ -34,10 +37,11 @@ function App() {
               <Route path="/flags/:flagKey" element={<FlagDetailPage />} />
               <Route path="/segments" element={<SegmentsListPage />} />
               <Route path="/segments/:segmentKey" element={<SegmentDetailPage />} />
-              <Route path="/audit-log" element={<PlaceholderPage title="Audit Logs" />} />
+              <Route path="/audit-log" element={<AuditLogPage />} />
               <Route path="/settings" element={<PlaceholderPage title="Settings" />} />
             </Route>
           </Routes>
+          </ErrorBoundary>
           <Toaster richColors position="bottom-right" />
         </BrowserRouter>
       </AuthProvider>
