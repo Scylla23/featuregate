@@ -1,7 +1,6 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
 import { QueryProvider } from '@/providers/query-provider';
 import { AuthProvider } from '@/hooks/use-auth';
-import { ProjectProvider } from '@/providers/project-provider';
 import { AppLayout } from '@/layouts/app-layout';
 import { LoginPage } from '@/pages/auth/login-page';
 import { FlagsListPage } from '@/pages/flags/flags-list-page';
@@ -13,27 +12,33 @@ import { SettingsPage } from '@/pages/settings/settings-page';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/sonner';
 
+const router = createBrowserRouter([
+  {
+    path: '/login',
+    element: <LoginPage />,
+  },
+  {
+    element: <AppLayout />,
+    children: [
+      { index: true, element: <Navigate to="/flags" replace /> },
+      { path: 'flags', element: <FlagsListPage /> },
+      { path: 'flags/:flagKey', element: <FlagDetailPage /> },
+      { path: 'segments', element: <SegmentsListPage /> },
+      { path: 'segments/:segmentKey', element: <SegmentDetailPage /> },
+      { path: 'audit-log', element: <AuditLogPage /> },
+      { path: 'settings', element: <SettingsPage /> },
+    ],
+  },
+]);
+
 function App() {
   return (
     <QueryProvider>
       <AuthProvider>
-        <BrowserRouter>
-          <ErrorBoundary>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route element={<AppLayout />}>
-              <Route path="/" element={<Navigate to="/flags" replace />} />
-              <Route path="/flags" element={<FlagsListPage />} />
-              <Route path="/flags/:flagKey" element={<FlagDetailPage />} />
-              <Route path="/segments" element={<SegmentsListPage />} />
-              <Route path="/segments/:segmentKey" element={<SegmentDetailPage />} />
-              <Route path="/audit-log" element={<AuditLogPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-            </Route>
-          </Routes>
-          </ErrorBoundary>
-          <Toaster richColors position="bottom-right" />
-        </BrowserRouter>
+        <ErrorBoundary>
+          <RouterProvider router={router} />
+        </ErrorBoundary>
+        <Toaster richColors position="bottom-right" />
       </AuthProvider>
     </QueryProvider>
   );
