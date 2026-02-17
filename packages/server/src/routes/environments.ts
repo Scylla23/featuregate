@@ -3,7 +3,9 @@ import { z } from 'zod';
 import { Types } from 'mongoose';
 import { Environment } from '../models/Environment.js';
 import { Flag } from '../models/Flag.js';
+import { FlagConfig } from '../models/FlagConfig.js';
 import { Segment } from '../models/Segment.js';
+import { SegmentConfig } from '../models/SegmentConfig.js';
 import { authenticateDashboard } from '../middleware/auth.js';
 import { requireProjectRole } from '../middleware/rbac.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
@@ -120,6 +122,38 @@ router.post(
         sortOrder,
         createdBy: req.user!._id,
       });
+
+      // Auto-create FlagConfig for all existing project flags
+      const existingFlags = await Flag.find({ projectId, archived: { $ne: true } }).lean();
+      if (existingFlags.length > 0) {
+        const flagConfigs = existingFlags.map((flag) => ({
+          flagId: flag._id,
+          flagKey: flag.key,
+          projectId: new Types.ObjectId(projectId),
+          environmentKey: environment.key,
+          enabled: false,
+          offVariation: flag.variations.length > 1 ? 1 : 0,
+          fallthrough: { variation: 0 },
+          targets: [],
+          rules: [],
+        }));
+        await FlagConfig.insertMany(flagConfigs);
+      }
+
+      // Auto-create SegmentConfig for all existing project segments
+      const existingSegments = await Segment.find({ projectId, archived: { $ne: true } }).lean();
+      if (existingSegments.length > 0) {
+        const segmentConfigs = existingSegments.map((seg) => ({
+          segmentId: seg._id,
+          segmentKey: seg.key,
+          projectId: new Types.ObjectId(projectId),
+          environmentKey: environment.key,
+          included: [],
+          excluded: [],
+          rules: [],
+        }));
+        await SegmentConfig.insertMany(segmentConfigs);
+      }
 
       createAuditEntry({
         action: 'environment.created',
@@ -282,10 +316,10 @@ router.delete(
         );
       }
 
-      // Cascade: delete flags and segments in this environment
+      // Cascade: delete per-environment configs (not the project-level flags/segments)
       await Promise.all([
-        Flag.deleteMany({ projectId, environmentKey: envKey }),
-        Segment.deleteMany({ projectId, environmentKey: envKey }),
+        FlagConfig.deleteMany({ projectId, environmentKey: envKey }),
+        SegmentConfig.deleteMany({ projectId, environmentKey: envKey }),
       ]);
 
       await Environment.deleteOne({ _id: environment._id });

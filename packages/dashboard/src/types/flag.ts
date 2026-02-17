@@ -37,15 +37,32 @@ export interface Target {
   values: string[];
 }
 
+/**
+ * Project-level flag definition — shared across all environments.
+ */
 export interface Flag {
   _id: string;
   key: string;
   name: string;
   description?: string;
   projectId: string;
+  variations: Variation[];
+  tags: string[];
+  archived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Per-environment targeting configuration for a flag.
+ */
+export interface FlagConfig {
+  _id: string;
+  flagId: string;
+  flagKey: string;
+  projectId: string;
   environmentKey: string;
   enabled: boolean;
-  variations: Variation[];
   offVariation: number;
   fallthrough: {
     variation?: number;
@@ -53,10 +70,18 @@ export interface Flag {
   };
   targets: Target[];
   rules: Rule[];
-  tags: string[];
-  archived: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Merged view returned by GET /flags (list) and GET /flags/:key (detail).
+ * Includes the per-environment enabled status merged in.
+ */
+export interface FlagWithConfig extends Flag {
+  enabled: boolean;
+  environmentKey: string;
+  config?: FlagConfig | null;
 }
 
 export interface CreateFlagInput {
@@ -64,8 +89,6 @@ export interface CreateFlagInput {
   name: string;
   description?: string;
   projectId: string;
-  environmentKey: string;
-  enabled?: boolean;
   variations: Pick<Variation, 'value' | 'name'>[];
   offVariation: number;
   fallthrough?: { variation?: number };
@@ -75,8 +98,12 @@ export interface CreateFlagInput {
 export interface UpdateFlagInput {
   name?: string;
   description?: string;
-  enabled?: boolean;
   variations?: Variation[];
+  tags?: string[];
+}
+
+export interface UpdateFlagConfigInput {
+  enabled?: boolean;
   offVariation?: number;
   fallthrough?: {
     variation?: number;
@@ -98,7 +125,6 @@ export interface UpdateFlagInput {
       seed?: number;
     };
   }>;
-  tags?: string[];
 }
 
 export interface EvaluateResult {

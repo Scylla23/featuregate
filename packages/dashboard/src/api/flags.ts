@@ -1,14 +1,17 @@
 import { apiFetch } from './client';
 import type {
   Flag,
+  FlagWithConfig,
+  FlagConfig,
   CreateFlagInput,
   UpdateFlagInput,
+  UpdateFlagConfigInput,
   ListFlagsParams,
   EvaluateResult,
 } from '@/types/flag';
 
 export interface FlagsListResponse {
-  flags: Flag[];
+  flags: FlagWithConfig[];
   total: number;
   page: number;
   totalPages: number;
@@ -34,25 +37,53 @@ export async function createFlag(input: CreateFlagInput): Promise<Flag> {
   });
 }
 
-export async function toggleFlag(key: string): Promise<Flag> {
-  return apiFetch<Flag>(`/flags/${key}/toggle`, {
+export async function toggleFlag(key: string, environmentKey: string, projectId?: string): Promise<FlagWithConfig> {
+  const query = new URLSearchParams();
+  query.set('environmentKey', environmentKey);
+  if (projectId) query.set('projectId', projectId);
+  return apiFetch<FlagWithConfig>(`/flags/${key}/toggle?${query.toString()}`, {
     method: 'PATCH',
   });
 }
 
-export async function getFlag(key: string): Promise<Flag> {
-  return apiFetch<Flag>(`/flags/${key}`);
+export async function getFlag(key: string, environmentKey?: string, projectId?: string): Promise<FlagWithConfig> {
+  const query = new URLSearchParams();
+  if (environmentKey) query.set('environmentKey', environmentKey);
+  if (projectId) query.set('projectId', projectId);
+  const qs = query.toString();
+  return apiFetch<FlagWithConfig>(`/flags/${key}${qs ? `?${qs}` : ''}`);
 }
 
-export async function updateFlag(key: string, input: UpdateFlagInput): Promise<Flag> {
-  return apiFetch<Flag>(`/flags/${key}`, {
+export async function updateFlag(key: string, input: UpdateFlagInput, projectId?: string): Promise<Flag> {
+  const query = new URLSearchParams();
+  if (projectId) query.set('projectId', projectId);
+  const qs = query.toString();
+  return apiFetch<Flag>(`/flags/${key}${qs ? `?${qs}` : ''}`, {
     method: 'PATCH',
     body: JSON.stringify(input),
   });
 }
 
-export async function deleteFlag(key: string): Promise<void> {
-  await apiFetch(`/flags/${key}`, {
+export async function updateFlagConfig(
+  key: string,
+  environmentKey: string,
+  input: UpdateFlagConfigInput,
+  projectId?: string,
+): Promise<FlagConfig> {
+  const query = new URLSearchParams();
+  if (projectId) query.set('projectId', projectId);
+  const qs = query.toString();
+  return apiFetch<FlagConfig>(`/flags/${key}/config/${environmentKey}${qs ? `?${qs}` : ''}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteFlag(key: string, projectId?: string): Promise<void> {
+  const query = new URLSearchParams();
+  if (projectId) query.set('projectId', projectId);
+  const qs = query.toString();
+  await apiFetch(`/flags/${key}${qs ? `?${qs}` : ''}`, {
     method: 'DELETE',
   });
 }

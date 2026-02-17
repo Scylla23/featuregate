@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Loader2, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
-import { useFlag, useUpdateFlag } from '@/hooks/use-flags';
+import { useFlag, useUpdateFlag, useUpdateFlagConfig } from '@/hooks/use-flags';
 import { useFlagForm } from '@/hooks/use-flag-form';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/components/ui/button';
@@ -29,8 +29,9 @@ export function FlagDetailPage() {
   const { flagKey } = useParams<{ flagKey: string }>();
   const navigate = useNavigate();
   const { data: flag, isLoading, error } = useFlag(flagKey);
-  const { state, dispatch, isDirty, getPayload, reset } = useFlagForm(flag);
+  const { state, dispatch, isDirty, getFlagPayload, getConfigPayload, reset } = useFlagForm(flag);
   const updateFlag = useUpdateFlag();
+  const updateFlagConfig = useUpdateFlagConfig();
   const [activeTab, setActiveTab] = useState('targeting');
 
   const blocker = useUnsavedChangesGuard(isDirty);
@@ -62,8 +63,14 @@ export function FlagDetailPage() {
     }
 
     try {
-      const payload = getPayload();
-      await updateFlag.mutateAsync({ key: flagKey!, input: payload });
+      const flagPayload = getFlagPayload();
+      const configPayload = getConfigPayload();
+
+      // Update both flag definition and per-environment config
+      await Promise.all([
+        updateFlag.mutateAsync({ key: flagKey!, input: flagPayload }),
+        updateFlagConfig.mutateAsync({ key: flagKey!, input: configPayload }),
+      ]);
       toast.success('Flag saved successfully');
     } catch {
       toast.error('Failed to save flag');
@@ -100,7 +107,7 @@ export function FlagDetailPage() {
         state={state}
         dispatch={dispatch}
         isDirty={isDirty}
-        isSaving={updateFlag.isPending}
+        isSaving={updateFlag.isPending || updateFlagConfig.isPending}
         onSave={handleSave}
         onDiscard={handleDiscard}
         flagKey={flagKey!}
@@ -162,8 +169,8 @@ export function FlagDetailPage() {
             <Button variant="outline" size="sm" onClick={handleDiscard}>
               Discard
             </Button>
-            <Button size="sm" onClick={handleSave} disabled={updateFlag.isPending}>
-              {updateFlag.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
+            <Button size="sm" onClick={handleSave} disabled={updateFlag.isPending || updateFlagConfig.isPending}>
+              {(updateFlag.isPending || updateFlagConfig.isPending) && <Loader2 className="mr-2 size-4 animate-spin" />}
               Save Changes
             </Button>
           </div>

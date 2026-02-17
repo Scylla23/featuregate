@@ -1,5 +1,5 @@
 import { useReducer, useCallback, useRef, useEffect } from 'react';
-import type { Flag, Variation, Clause, Target, Rollout, UpdateFlagInput } from '@/types/flag';
+import type { FlagWithConfig, Variation, Clause, Target, Rollout, UpdateFlagInput, UpdateFlagConfigInput } from '@/types/flag';
 
 // ---------------------------------------------------------------------------
 // State
@@ -372,16 +372,17 @@ function flagFormReducer(state: FlagFormState, action: FlagFormAction): FlagForm
 // Convert server Flag → form state
 // ---------------------------------------------------------------------------
 
-function flagToFormState(flag: Flag): FlagFormState {
+function flagToFormState(flag: FlagWithConfig): FlagFormState {
+  const config = flag.config;
   return {
     name: flag.name,
     description: flag.description ?? '',
-    enabled: flag.enabled,
+    enabled: config?.enabled ?? flag.enabled ?? false,
     variations: flag.variations,
-    offVariation: flag.offVariation,
-    fallthrough: flag.fallthrough,
-    targets: flag.targets ?? [],
-    rules: (flag.rules ?? []).map((r) => {
+    offVariation: config?.offVariation ?? 0,
+    fallthrough: config?.fallthrough ?? { variation: 0 },
+    targets: config?.targets ?? [],
+    rules: (config?.rules ?? []).map((r) => {
       // Server stores fixed variation as rollout.variation — extract it
       const serverRollout = r.rollout as
         | { variation?: number; variations?: { variation: number; weight: number }[] }
@@ -421,7 +422,16 @@ function flagToFormState(flag: Flag): FlagFormState {
 // Convert form state → server UpdateFlagInput
 // ---------------------------------------------------------------------------
 
-function formStateToPayload(state: FlagFormState): UpdateFlagInput {
+function formStateToFlagPayload(state: FlagFormState): UpdateFlagInput {
+  return {
+    name: state.name,
+    description: state.description,
+    variations: state.variations,
+    tags: state.tags,
+  };
+}
+
+function formStateToConfigPayload(state: FlagFormState): UpdateFlagConfigInput {
   const rules = state.rules.map((r) => {
     // Transform dashboard variation → server rollout.variation
     if (r.variation != null && !r.rollout) {
@@ -453,10 +463,7 @@ function formStateToPayload(state: FlagFormState): UpdateFlagInput {
   });
 
   return {
-    name: state.name,
-    description: state.description,
     enabled: state.enabled,
-    variations: state.variations,
     offVariation: state.offVariation,
     fallthrough: state.fallthrough.rollout
       ? {
@@ -474,7 +481,6 @@ function formStateToPayload(state: FlagFormState): UpdateFlagInput {
       : state.fallthrough,
     targets: state.targets,
     rules,
-    tags: state.tags,
   };
 }
 
@@ -494,7 +500,7 @@ const EMPTY_STATE: FlagFormState = {
   tags: [],
 };
 
-export function useFlagForm(serverFlag: Flag | undefined) {
+export function useFlagForm(serverFlag: FlagWithConfig | undefined) {
   const originalRef = useRef<FlagFormState>(EMPTY_STATE);
   const [state, dispatch] = useReducer(flagFormReducer, EMPTY_STATE);
 
@@ -509,13 +515,22 @@ export function useFlagForm(serverFlag: Flag | undefined) {
 
   const isDirty = JSON.stringify(state) !== JSON.stringify(originalRef.current);
 
-  const getPayload = useCallback((): UpdateFlagInput => {
-    return formStateToPayload(state);
+  const getFlagPayload = useCallback((): UpdateFlagInput => {
+    return formStateToFlagPayload(state);
+  }, [state]);
+
+  const getConfigPayload = useCallback((): UpdateFlagConfigInput => {
+    return formStateToConfigPayload(state);
+  }, [state]);
+
+  // Legacy: returns combined payload for backward compat
+  const getPayload = useCallback((): UpdateFlagInput & UpdateFlagConfigInput => {
+    return { ...formStateToFlagPayload(state), ...formStateToConfigPayload(state) };
   }, [state]);
 
   const reset = useCallback(() => {
     dispatch({ type: 'RESET', payload: originalRef.current });
   }, []);
 
-  return { state, dispatch, isDirty, getPayload, reset };
+  return { state, dispatch, isDirty, getFlagPayload, getConfigPayload, getPayload, reset };
 }

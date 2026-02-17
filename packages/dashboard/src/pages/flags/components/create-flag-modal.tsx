@@ -52,7 +52,7 @@ export function CreateFlagModal({ open, onOpenChange }: CreateFlagModalProps) {
   const keyManuallyEdited = useRef(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const createFlag = useCreateFlag();
-  const { activeProjectId, activeEnvironmentKey } = useProject();
+  const { activeProjectId } = useProject();
 
   const {
     register,
@@ -83,7 +83,6 @@ export function CreateFlagModal({ open, onOpenChange }: CreateFlagModalProps) {
       await createFlag.mutateAsync({
         ...values,
         projectId: activeProjectId!,
-        environmentKey: activeEnvironmentKey!,
         variations: [
           { value: true, name: 'True' },
           { value: false, name: 'False' },

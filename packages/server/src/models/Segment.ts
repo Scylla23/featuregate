@@ -1,36 +1,15 @@
 import { Schema, model } from 'mongoose';
 
-// Reusing the same clause structure as Flags for consistency
-const clauseSchema = new Schema(
-  {
-    attribute: { type: String, required: true },
-    operator: { type: String, required: true },
-    values: [{ type: Schema.Types.Mixed }],
-    negate: { type: Boolean, default: false },
-  },
-  { _id: false },
-);
-
-const segmentRuleSchema = new Schema(
-  {
-    id: { type: String, required: true }, // UUID
-    clauses: [clauseSchema], // ANDed together
-    weight: { type: Number }, // Optional percentage rollout (0-100000)
-    bucketBy: { type: String, default: 'key' }, // Attribute used for hashing
-  },
-  { _id: false },
-);
-
+/**
+ * Segment — project-level definition.
+ * Per-environment config (included, excluded, rules) lives in SegmentConfig.
+ */
 const segmentSchema = new Schema(
   {
-    key: { type: String, required: true, unique: true, index: true },
+    key: { type: String, required: true, index: true },
     name: { type: String, required: true },
     description: String,
     projectId: { type: Schema.Types.ObjectId, required: true, index: true },
-    environmentKey: { type: String, required: true, index: true },
-    included: [String], // Explicit user IDs (Highest priority)
-    excluded: [String], // Explicit user IDs (Overrides rules)
-    rules: [segmentRuleSchema], // ORed together
     tags: [String],
     archived: { type: Boolean, default: false, index: true },
     archivedAt: { type: Date, default: null },
@@ -38,7 +17,7 @@ const segmentSchema = new Schema(
   { timestamps: true },
 );
 
-// Composite index for environment-scoped lookups
-segmentSchema.index({ projectId: 1, environmentKey: 1, key: 1 });
+// key is unique within a project (not globally)
+segmentSchema.index({ projectId: 1, key: 1 }, { unique: true });
 
 export const Segment = model('Segment', segmentSchema);

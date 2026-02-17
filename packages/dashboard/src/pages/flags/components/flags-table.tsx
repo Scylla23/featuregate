@@ -9,7 +9,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { CopyButton } from '@/components/copy-button';
@@ -18,10 +17,10 @@ import { FlagRowActions } from './flag-row-actions';
 import { useToggleFlag } from '@/hooks/use-flags';
 import { getAuthorForFlag } from '@/mock/flags';
 import { toast } from 'sonner';
-import type { Flag } from '@/types/flag';
+import type { FlagWithConfig } from '@/types/flag';
 
 interface FlagsTableProps {
-  flags: Flag[];
+  flags: FlagWithConfig[];
   isLoading?: boolean;
   skeletonRows?: number;
 }
@@ -29,10 +28,10 @@ interface FlagsTableProps {
 export function FlagsTable({ flags, isLoading, skeletonRows = 8 }: FlagsTableProps) {
   const toggleFlag = useToggleFlag();
 
-  const handleToggle = (flag: Flag) => {
+  const handleToggle = (flag: FlagWithConfig) => {
     toggleFlag.mutate(flag.key, {
       onSuccess: (updated) => {
-        toast.success(`${updated.name} ${updated.enabled ? 'enabled' : 'disabled'}`);
+        toast.success(`${updated.name || flag.name} ${updated.enabled ? 'enabled' : 'disabled'}`);
       },
       onError: () => {
         toast.error('Failed to toggle flag');
@@ -49,11 +48,10 @@ export function FlagsTable({ flags, isLoading, skeletonRows = 8 }: FlagsTablePro
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="w-[35%]">Flag Details</TableHead>
+            <TableHead className="w-[40%]">Flag Details</TableHead>
             <TableHead className="w-[10%]">Status</TableHead>
-            <TableHead className="w-[15%]">Environment</TableHead>
-            <TableHead className="w-[20%]">Tags</TableHead>
-            <TableHead className="w-[15%]">Last Updated</TableHead>
+            <TableHead className="w-[25%]">Tags</TableHead>
+            <TableHead className="w-[20%]">Last Updated</TableHead>
             <TableHead className="w-[5%]">
               <span className="sr-only">Actions</span>
             </TableHead>
@@ -86,11 +84,6 @@ export function FlagsTable({ flags, isLoading, skeletonRows = 8 }: FlagsTablePro
                     onCheckedChange={() => handleToggle(flag)}
                     aria-label={`Toggle ${flag.name}`}
                   />
-                </TableCell>
-                <TableCell>
-                  <Badge variant="outline" className="text-[11px] capitalize">
-                    {flag.environmentKey}
-                  </Badge>
                 </TableCell>
                 <TableCell>
                   <TagBadgeList tags={flag.tags} max={2} />
@@ -130,11 +123,10 @@ function FlagsTableSkeleton({ rows }: { rows: number }) {
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="w-[35%]">Flag Details</TableHead>
+            <TableHead className="w-[40%]">Flag Details</TableHead>
             <TableHead className="w-[10%]">Status</TableHead>
-            <TableHead className="w-[15%]">Environment</TableHead>
-            <TableHead className="w-[20%]">Tags</TableHead>
-            <TableHead className="w-[15%]">Last Updated</TableHead>
+            <TableHead className="w-[25%]">Tags</TableHead>
+            <TableHead className="w-[20%]">Last Updated</TableHead>
             <TableHead className="w-[5%]" />
           </TableRow>
         </TableHeader>
@@ -149,9 +141,6 @@ function FlagsTableSkeleton({ rows }: { rows: number }) {
               </TableCell>
               <TableCell>
                 <Skeleton className="h-5 w-9 rounded-full" />
-              </TableCell>
-              <TableCell>
-                <Skeleton className="h-5 w-20 rounded-full" />
               </TableCell>
               <TableCell>
                 <div className="flex gap-1">

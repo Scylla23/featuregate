@@ -1,10 +1,10 @@
 import { Flag, CheckCircle, AlertTriangle, Activity } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import type { Flag as FlagType } from '@/types/flag';
+import type { FlagWithConfig } from '@/types/flag';
 
 interface FlagsSummaryCardsProps {
-  flags: FlagType[];
+  flags: FlagWithConfig[];
   total: number;
 }
 

@@ -1,7 +1,9 @@
 import { Router, type Router as IRouter, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { Flag } from '../models/Flag.js';
+import { FlagConfig } from '../models/FlagConfig.js';
 import { Segment } from '../models/Segment.js';
+import { SegmentConfig } from '../models/SegmentConfig.js';
 import { authenticateSDK } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
 import { getCachedSdkPayload, setCachedSdkPayload } from '../services/cacheService.js';
@@ -41,25 +43,54 @@ const batchEvaluateSchema = z.object({
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Load flags + configs + segments + configs for a given environment,
+ * returning merged docs ready for evaluation.
+ */
 async function loadEnvData(projectId: unknown, environmentKey: string) {
-  const [flags, segments] = await Promise.all([
-    Flag.find({
-      projectId,
-      environmentKey,
-      archived: { $ne: true },
-    }).lean(),
-    Segment.find({
-      projectId,
-      environmentKey,
-      archived: { $ne: true },
-    }).lean(),
+  const [flags, flagConfigs, segments, segmentConfigs] = await Promise.all([
+    Flag.find({ projectId, archived: { $ne: true } }).lean(),
+    FlagConfig.find({ projectId, environmentKey }).lean(),
+    Segment.find({ projectId, archived: { $ne: true } }).lean(),
+    SegmentConfig.find({ projectId, environmentKey }).lean(),
   ]);
 
   const segmentIdToKeyMap = buildSegmentIdToKeyMap(
     segments as Array<{ _id: unknown; key: string }>,
   );
 
-  return { flags, segments, segmentIdToKeyMap };
+  // Merge flags with their per-environment configs
+  const configMap = new Map(flagConfigs.map((c) => [c.flagKey, c]));
+  const mergedFlags = flags
+    .filter((f) => configMap.has(f.key))
+    .map((f) => {
+      const cfg = configMap.get(f.key)!;
+      return {
+        key: f.key,
+        enabled: cfg.enabled,
+        variations: f.variations,
+        offVariation: cfg.offVariation,
+        fallthrough: cfg.fallthrough,
+        targets: cfg.targets,
+        rules: cfg.rules,
+      };
+    });
+
+  // Merge segments with their per-environment configs
+  const segConfigMap = new Map(segmentConfigs.map((c) => [c.segmentKey, c]));
+  const mergedSegments = segments
+    .filter((s) => segConfigMap.has(s.key))
+    .map((s) => {
+      const cfg = segConfigMap.get(s.key)!;
+      return {
+        key: s.key,
+        included: cfg.included,
+        excluded: cfg.excluded,
+        rules: cfg.rules,
+      };
+    });
+
+  return { flags: mergedFlags, segments: mergedSegments, segmentIdToKeyMap };
 }
 
 function buildSegmentsMap(
@@ -140,13 +171,6 @@ router.post(
       const flagDoc = flags.find((f: any) => f.key === flagKey);
       if (!flagDoc) {
         throw new NotFoundError('Flag', flagKey);
-      }
-
-      // Check if archived
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if ((flagDoc as any).archived) {
-        res.status(404).json({ error: 'Flag is archived' });
-        return;
       }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

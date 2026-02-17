@@ -1,7 +1,10 @@
 import { Router, type Router as IRouter, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { Flag } from '../models/Flag.js';
+import { FlagConfig } from '../models/FlagConfig.js';
 import { Segment } from '../models/Segment.js';
+import { SegmentConfig } from '../models/SegmentConfig.js';
+import { Environment } from '../models/Environment.js';
 import { authenticateDashboard } from '../middleware/auth.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import { invalidateFlagCache } from '../services/cacheService.js';
@@ -57,6 +60,7 @@ const ruleSchema = z.object({
   rollout: rolloutSchema.optional(),
 });
 
+// Create flag — project-level, no environmentKey
 const createFlagSchema = z.object({
   key: z
     .string()
@@ -66,8 +70,6 @@ const createFlagSchema = z.object({
   name: z.string().min(1).max(256),
   description: z.string().optional(),
   projectId: z.string().min(1),
-  environmentKey: z.string().min(1),
-  enabled: z.boolean().default(false),
   variations: z.array(variationSchema).min(2, 'At least 2 variations required'),
   offVariation: z.number().int().min(0),
   fallthrough: z
@@ -89,23 +91,20 @@ const createFlagSchema = z.object({
         .optional(),
     })
     .optional(),
-  targets: z
-    .array(
-      z.object({
-        variation: z.number().int().min(0),
-        values: z.array(z.string()),
-      }),
-    )
-    .optional(),
-  rules: z.array(ruleSchema).optional(),
   tags: z.array(z.string()).optional(),
 });
 
+// Update flag definition — project-level fields only
 const updateFlagSchema = z.object({
   name: z.string().min(1).max(256).optional(),
   description: z.string().optional(),
-  enabled: z.boolean().optional(),
   variations: z.array(variationSchema).min(2).optional(),
+  tags: z.array(z.string()).optional(),
+});
+
+// Update per-environment config
+const updateFlagConfigSchema = z.object({
+  enabled: z.boolean().optional(),
   offVariation: z.number().int().min(0).optional(),
   fallthrough: z
     .object({
@@ -135,7 +134,6 @@ const updateFlagSchema = z.object({
     )
     .optional(),
   rules: z.array(ruleSchema).optional(),
-  tags: z.array(z.string()).optional(),
 });
 
 const listFlagsQuerySchema = z.object({
@@ -148,7 +146,32 @@ const listFlagsQuerySchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// POST / — Create flag
+// Helpers
+// ---------------------------------------------------------------------------
+
+async function invalidateFlagCacheAllEnvs(
+  projectId: unknown,
+  flagKey: string,
+): Promise<void> {
+  const environments = await Environment.find({ projectId }).select('key').lean();
+  await Promise.all(
+    environments.map((env) => invalidateFlagCache(env.key, flagKey)),
+  );
+}
+
+async function publishFlagUpdateAllEnvs(
+  projectId: unknown,
+  flagKey: string,
+  payload: unknown,
+): Promise<void> {
+  const environments = await Environment.find({ projectId }).select('key').lean();
+  await Promise.all(
+    environments.map((env) => publishFlagUpdate(env.key, flagKey, payload)),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// POST / — Create flag (project-level, configs for all environments)
 // ---------------------------------------------------------------------------
 
 router.post(
@@ -163,12 +186,34 @@ router.post(
         throw new ValidationError('offVariation index exceeds variations array length');
       }
 
-      // Default fallthrough
-      if (!body.fallthrough) {
-        body.fallthrough = { variation: 0 };
-      }
+      const defaultFallthrough = body.fallthrough || { variation: 0 };
 
-      const flag = await Flag.create(body);
+      // Create project-level flag
+      const flag = await Flag.create({
+        key: body.key,
+        name: body.name,
+        description: body.description,
+        projectId: body.projectId,
+        variations: body.variations,
+        tags: body.tags || [],
+      });
+
+      // Create a FlagConfig for every environment in the project
+      const environments = await Environment.find({ projectId: body.projectId }).lean();
+      if (environments.length > 0) {
+        const configs = environments.map((env) => ({
+          flagId: flag._id,
+          flagKey: flag.key,
+          projectId: flag.projectId,
+          environmentKey: env.key,
+          enabled: false,
+          offVariation: body.offVariation,
+          fallthrough: defaultFallthrough,
+          targets: [],
+          rules: [],
+        }));
+        await FlagConfig.insertMany(configs);
+      }
 
       // Audit log
       createAuditEntry({
@@ -176,14 +221,15 @@ router.post(
         resourceType: 'flag',
         resourceKey: flag.key,
         projectId: flag.projectId,
-        environmentKey: flag.environmentKey,
         author: { userId: req.user!._id, email: req.user!.email },
         currentValue: flag.toObject(),
       });
 
-      // Invalidate cache + publish
-      await invalidateFlagCache(flag.environmentKey, flag.key);
-      await publishFlagUpdate(flag.environmentKey, flag.key, flag);
+      // Invalidate cache + publish for all environments
+      for (const env of environments) {
+        await invalidateFlagCache(env.key, flag.key);
+        await publishFlagUpdate(env.key, flag.key, flag);
+      }
 
       res.status(201).json(flag);
     } catch (error) {
@@ -193,7 +239,7 @@ router.post(
         error.name === 'MongoServerError' &&
         (error as { code?: number }).code === 11000
       ) {
-        next(new ConflictError('Flag key already exists'));
+        next(new ConflictError('Flag key already exists in this project'));
         return;
       }
       next(error);
@@ -202,7 +248,7 @@ router.post(
 );
 
 // ---------------------------------------------------------------------------
-// GET / — List flags
+// GET / — List flags (project-level, merged with per-env config)
 // ---------------------------------------------------------------------------
 
 router.get(
@@ -216,7 +262,6 @@ router.get(
       const filter: Record<string, unknown> = { archived: { $ne: true } };
 
       if (projectId) filter.projectId = projectId;
-      if (environmentKey) filter.environmentKey = environmentKey;
       if (tags) {
         const tagList = tags.split(',').map((t) => t.trim());
         filter.tags = { $in: tagList };
@@ -237,8 +282,28 @@ router.get(
         Flag.countDocuments(filter),
       ]);
 
+      // Merge per-environment config (enabled status) if environmentKey is provided
+      let mergedFlags = flags;
+      if (environmentKey && projectId) {
+        const flagKeys = flags.map((f) => f.key);
+        const configs = await FlagConfig.find({
+          projectId,
+          environmentKey,
+          flagKey: { $in: flagKeys },
+        })
+          .select('flagKey enabled')
+          .lean();
+
+        const configMap = new Map(configs.map((c) => [c.flagKey, c]));
+        mergedFlags = flags.map((f) => ({
+          ...f,
+          enabled: configMap.get(f.key)?.enabled ?? false,
+          environmentKey,
+        }));
+      }
+
       res.json({
-        flags,
+        flags: mergedFlags,
         total,
         page,
         totalPages: Math.ceil(total / limit),
@@ -250,28 +315,42 @@ router.get(
 );
 
 // ---------------------------------------------------------------------------
-// GET /:key — Get single flag
+// GET /:key — Get single flag (merged with per-env config)
 // ---------------------------------------------------------------------------
 
 router.get('/:key', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const flag = await Flag.findOne({
+    const { environmentKey, projectId } = req.query as { environmentKey?: string; projectId?: string };
+
+    const flagFilter: Record<string, unknown> = {
       key: req.params.key,
       archived: { $ne: true },
-    }).lean();
+    };
+    if (projectId) flagFilter.projectId = projectId;
+
+    const flag = await Flag.findOne(flagFilter).lean();
 
     if (!flag) {
       throw new NotFoundError('Flag', req.params.key);
     }
 
-    res.json(flag);
+    // Load per-environment config
+    let config = null;
+    if (environmentKey) {
+      config = await FlagConfig.findOne({
+        flagId: flag._id,
+        environmentKey,
+      }).lean();
+    }
+
+    res.json({ ...flag, config });
   } catch (error) {
     next(error);
   }
 });
 
 // ---------------------------------------------------------------------------
-// PATCH /:key — Partial update
+// PATCH /:key — Update flag definition (project-level fields only)
 // ---------------------------------------------------------------------------
 
 router.patch(
@@ -284,24 +363,29 @@ router.patch(
         throw new ValidationError('Flag key is immutable and cannot be changed');
       }
 
-      const previousFlag = await Flag.findOne({
+      const { projectId } = req.query as { projectId?: string };
+
+      const findFilter: Record<string, unknown> = {
         key: req.params.key,
         archived: { $ne: true },
-      }).lean();
+      };
+      if (projectId) findFilter.projectId = projectId;
+
+      const previousFlag = await Flag.findOne(findFilter).lean();
 
       if (!previousFlag) {
         throw new NotFoundError('Flag', req.params.key);
       }
 
       const updatedFlag = await Flag.findOneAndUpdate(
-        { key: req.params.key, archived: { $ne: true } },
+        findFilter,
         { $set: req.body },
         { new: true, runValidators: true },
       ).lean();
 
-      // Invalidate cache + publish
-      await invalidateFlagCache(previousFlag.environmentKey, previousFlag.key);
-      await publishFlagUpdate(previousFlag.environmentKey, previousFlag.key, updatedFlag);
+      // Invalidate cache for ALL environments (variations may have changed)
+      await invalidateFlagCacheAllEnvs(previousFlag.projectId, previousFlag.key);
+      await publishFlagUpdateAllEnvs(previousFlag.projectId, previousFlag.key, updatedFlag);
 
       // Audit log
       createAuditEntry({
@@ -309,7 +393,6 @@ router.patch(
         resourceType: 'flag',
         resourceKey: previousFlag.key,
         projectId: previousFlag.projectId,
-        environmentKey: previousFlag.environmentKey,
         author: { userId: req.user!._id, email: req.user!.email },
         previousValue: previousFlag as Record<string, unknown>,
         currentValue: updatedFlag as Record<string, unknown>,
@@ -328,9 +411,17 @@ router.patch(
 
 router.delete('/:key', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const { projectId } = req.query as { projectId?: string };
+
+    const findFilter: Record<string, unknown> = {
+      key: req.params.key,
+      archived: { $ne: true },
+    };
+    if (projectId) findFilter.projectId = projectId;
+
     const flag = await Flag.findOneAndUpdate(
-      { key: req.params.key, archived: { $ne: true } },
-      { $set: { archived: true, archivedAt: new Date(), enabled: false } },
+      findFilter,
+      { $set: { archived: true, archivedAt: new Date() } },
       { new: true },
     ).lean();
 
@@ -338,8 +429,14 @@ router.delete('/:key', async (req: Request, res: Response, next: NextFunction) =
       throw new NotFoundError('Flag', req.params.key);
     }
 
-    await invalidateFlagCache(flag.environmentKey, flag.key);
-    await publishFlagUpdate(flag.environmentKey, flag.key, flag);
+    // Disable all configs for this flag
+    await FlagConfig.updateMany(
+      { flagId: flag._id },
+      { $set: { enabled: false } },
+    );
+
+    await invalidateFlagCacheAllEnvs(flag.projectId, flag.key);
+    await publishFlagUpdateAllEnvs(flag.projectId, flag.key, flag);
 
     // Audit log
     createAuditEntry({
@@ -347,7 +444,6 @@ router.delete('/:key', async (req: Request, res: Response, next: NextFunction) =
       resourceType: 'flag',
       resourceKey: flag.key,
       projectId: flag.projectId,
-      environmentKey: flag.environmentKey,
       author: { userId: req.user!._id, email: req.user!.email },
       currentValue: flag as Record<string, unknown>,
     });
@@ -359,46 +455,154 @@ router.delete('/:key', async (req: Request, res: Response, next: NextFunction) =
 });
 
 // ---------------------------------------------------------------------------
-// PATCH /:key/toggle — Quick toggle
+// PATCH /:key/toggle — Quick toggle for an environment
 // ---------------------------------------------------------------------------
 
 router.patch('/:key/toggle', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const previousFlag = await Flag.findOne({
+    const { environmentKey, projectId } = req.query as { environmentKey: string; projectId?: string };
+
+    if (!environmentKey) {
+      throw new ValidationError('environmentKey query parameter is required');
+    }
+
+    const flagFilter: Record<string, unknown> = {
       key: req.params.key,
       archived: { $ne: true },
-    }).lean();
+    };
+    if (projectId) flagFilter.projectId = projectId;
 
-    if (!previousFlag) {
+    const flag = await Flag.findOne(flagFilter).lean();
+    if (!flag) {
       throw new NotFoundError('Flag', req.params.key);
     }
 
-    const updatedFlag = await Flag.findOneAndUpdate(
-      { key: req.params.key, archived: { $ne: true } },
-      { $set: { enabled: !previousFlag.enabled } },
+    const previousConfig = await FlagConfig.findOne({
+      flagId: flag._id,
+      environmentKey,
+    }).lean();
+
+    if (!previousConfig) {
+      throw new NotFoundError('FlagConfig', `${req.params.key}/${environmentKey}`);
+    }
+
+    const updatedConfig = await FlagConfig.findOneAndUpdate(
+      { flagId: flag._id, environmentKey },
+      { $set: { enabled: !previousConfig.enabled } },
       { new: true },
     ).lean();
 
-    await invalidateFlagCache(previousFlag.environmentKey, previousFlag.key);
-    await publishFlagUpdate(previousFlag.environmentKey, previousFlag.key, updatedFlag);
+    await invalidateFlagCache(environmentKey, flag.key);
+    await publishFlagUpdate(environmentKey, flag.key, { ...flag, ...updatedConfig });
 
     // Audit log
     createAuditEntry({
       action: 'flag.toggled',
       resourceType: 'flag',
-      resourceKey: previousFlag.key,
-      projectId: previousFlag.projectId,
-      environmentKey: previousFlag.environmentKey,
+      resourceKey: flag.key,
+      projectId: flag.projectId,
+      environmentKey,
       author: { userId: req.user!._id, email: req.user!.email },
-      previousValue: { enabled: previousFlag.enabled },
-      currentValue: { enabled: !previousFlag.enabled },
+      previousValue: { enabled: previousConfig.enabled },
+      currentValue: { enabled: !previousConfig.enabled },
     });
 
-    res.json(updatedFlag);
+    // Return merged flag+config for the dashboard
+    res.json({
+      ...flag,
+      enabled: updatedConfig!.enabled,
+      environmentKey,
+    });
   } catch (error) {
     next(error);
   }
 });
+
+// ---------------------------------------------------------------------------
+// GET /:key/configs — Get configs for all environments
+// ---------------------------------------------------------------------------
+
+router.get('/:key/configs', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { projectId } = req.query as { projectId?: string };
+
+    const flagFilter: Record<string, unknown> = {
+      key: req.params.key,
+      archived: { $ne: true },
+    };
+    if (projectId) flagFilter.projectId = projectId;
+
+    const flag = await Flag.findOne(flagFilter).lean();
+    if (!flag) {
+      throw new NotFoundError('Flag', req.params.key);
+    }
+
+    const configs = await FlagConfig.find({ flagId: flag._id }).lean();
+    res.json({ configs });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /:key/config/:environmentKey — Update targeting for one environment
+// ---------------------------------------------------------------------------
+
+router.patch(
+  '/:key/config/:environmentKey',
+  validateBody(updateFlagConfigSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { projectId } = req.query as { projectId?: string };
+      const { key, environmentKey } = req.params;
+
+      const flagFilter: Record<string, unknown> = {
+        key,
+        archived: { $ne: true },
+      };
+      if (projectId) flagFilter.projectId = projectId;
+
+      const flag = await Flag.findOne(flagFilter).lean();
+      if (!flag) {
+        throw new NotFoundError('Flag', key);
+      }
+
+      const previousConfig = await FlagConfig.findOne({
+        flagId: flag._id,
+        environmentKey,
+      }).lean();
+
+      if (!previousConfig) {
+        throw new NotFoundError('FlagConfig', `${key}/${environmentKey}`);
+      }
+
+      const updatedConfig = await FlagConfig.findOneAndUpdate(
+        { flagId: flag._id, environmentKey },
+        { $set: req.body },
+        { new: true, runValidators: true },
+      ).lean();
+
+      await invalidateFlagCache(environmentKey, flag.key);
+      await publishFlagUpdate(environmentKey, flag.key, { ...flag, ...updatedConfig });
+
+      // Audit log
+      createAuditEntry({
+        action: 'flag.updated',
+        resourceType: 'flag',
+        resourceKey: flag.key,
+        projectId: flag.projectId,
+        environmentKey,
+        author: { userId: req.user!._id, email: req.user!.email },
+        previousValue: previousConfig as Record<string, unknown>,
+        currentValue: updatedConfig as Record<string, unknown>,
+      });
+
+      res.json(updatedConfig);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // POST /:key/evaluate — Evaluate flag with context (dashboard tester)
@@ -422,36 +626,59 @@ router.post(
       const { context, projectId, environmentKey } = req.body;
       const flagKey = req.params.key;
 
-      const [flags, segments] = await Promise.all([
-        Flag.find({
-          projectId,
-          environmentKey,
-          archived: { $ne: true },
-        }).lean(),
-        Segment.find({
-          projectId,
-          environmentKey,
-          archived: { $ne: true },
-        }).lean(),
+      // Load flag + config for this environment
+      const [flags, flagConfigs, segments, segmentConfigs] = await Promise.all([
+        Flag.find({ projectId, archived: { $ne: true } }).lean(),
+        FlagConfig.find({ projectId, environmentKey }).lean(),
+        Segment.find({ projectId, archived: { $ne: true } }).lean(),
+        SegmentConfig.find({ projectId, environmentKey }).lean(),
       ]);
 
+      // Merge flags with configs
+      const configMap = new Map(flagConfigs.map((c) => [c.flagKey, c]));
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const flagDoc = flags.find((f: any) => f.key === flagKey);
       if (!flagDoc) {
         throw new NotFoundError('Flag', flagKey);
       }
+      const flagConfig = configMap.get(flagKey);
+      if (!flagConfig) {
+        throw new NotFoundError('FlagConfig', `${flagKey}/${environmentKey}`);
+      }
 
+      const mergedDoc = {
+        key: flagDoc.key,
+        enabled: flagConfig.enabled,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        variations: flagDoc.variations as any[],
+        offVariation: flagConfig.offVariation,
+        fallthrough: flagConfig.fallthrough,
+        targets: flagConfig.targets,
+        rules: flagConfig.rules,
+      };
+
+      // Build segment map
       const segmentIdToKeyMap = buildSegmentIdToKeyMap(
         segments as Array<{ _id: unknown; key: string }>,
       );
-
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const evalFlag = toEvalFlag(flagDoc as any, segmentIdToKeyMap);
+      const evalFlag = toEvalFlag(mergedDoc as any, segmentIdToKeyMap);
 
+      // Merge segments with configs
+      const segConfigMap = new Map(segmentConfigs.map((c) => [c.segmentKey, c]));
       const segmentsMap = new Map<string, EvalSegment>();
       for (const seg of segments) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        segmentsMap.set(seg.key, toEvalSegment(seg as any));
+        const segCfg = segConfigMap.get(seg.key);
+        if (segCfg) {
+          const mergedSeg = {
+            key: seg.key,
+            included: segCfg.included,
+            excluded: segCfg.excluded,
+            rules: segCfg.rules,
+          };
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          segmentsMap.set(seg.key, toEvalSegment(mergedSeg as any));
+        }
       }
 
       const result = evaluate(evalFlag, context, segmentsMap);

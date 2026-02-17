@@ -103,9 +103,13 @@ afterAll(async () => {
 
 beforeEach(async () => {
   const { Flag } = await import('../../src/models/Flag.js');
+  const { FlagConfig } = await import('../../src/models/FlagConfig.js');
   const { Segment } = await import('../../src/models/Segment.js');
+  const { SegmentConfig } = await import('../../src/models/SegmentConfig.js');
   await Flag.deleteMany({});
+  await FlagConfig.deleteMany({});
   await Segment.deleteMany({});
+  await SegmentConfig.deleteMany({});
 });
 
 // ---------------------------------------------------------------------------
@@ -132,36 +136,95 @@ function sdkPost(path: string) {
   return request(app).post(path).set('X-API-Key', sdkKey);
 }
 
-/** Create a boolean flag via the dashboard API */
+/**
+ * Create a boolean flag via the dashboard API and optionally configure its
+ * per-environment targeting (enabled, rules, targets, fallthrough).
+ */
 async function createFlag(overrides: Record<string, unknown> = {}) {
-  const key = uniqueKey('flag');
-  const defaults = {
+  const key = (overrides.key as string) || uniqueKey('flag');
+
+  // Separate project-level fields from config-level fields
+  const {
+    enabled,
+    targets,
+    rules,
+    ...rest
+  } = overrides;
+
+  const flagBody = {
     key,
     name: `Flag ${key}`,
     projectId,
-    environmentKey,
-    enabled: false,
     variations: [{ value: true }, { value: false }],
     offVariation: 1,
-    fallthrough: { variation: 0 },
+    fallthrough: rest.fallthrough ?? { variation: 0 },
+    ...rest,
   };
-  const body = { ...defaults, ...overrides };
-  const res = await dashboardPost('/api/v1/flags').send(body).expect(201);
-  return res.body;
+  // Remove config-only fields that leaked into flag body
+  delete flagBody.included;
+  delete flagBody.excluded;
+
+  const res = await dashboardPost('/api/v1/flags').send(flagBody).expect(201);
+  const flag = res.body;
+
+  // If targeting config was provided, update the FlagConfig for the test environment
+  const configUpdate: Record<string, unknown> = {};
+  if (enabled !== undefined) configUpdate.enabled = enabled;
+  if (targets !== undefined) configUpdate.targets = targets;
+  if (rules !== undefined) configUpdate.rules = rules;
+  if (overrides.fallthrough !== undefined) configUpdate.fallthrough = overrides.fallthrough;
+
+  if (Object.keys(configUpdate).length > 0) {
+    await dashboardPatch(`/api/v1/flags/${key}/config/${environmentKey}`)
+      .send(configUpdate)
+      .expect(200);
+  }
+
+  return flag;
 }
 
-/** Create a segment via the dashboard API */
+/**
+ * Create a segment via the dashboard API and optionally configure its
+ * per-environment settings (included, excluded, rules).
+ */
 async function createSegment(overrides: Record<string, unknown> = {}) {
-  const key = uniqueKey('segment');
-  const defaults = {
+  const key = (overrides.key as string) || uniqueKey('segment');
+
+  // Separate project-level fields from config-level fields
+  const {
+    included,
+    excluded,
+    rules,
+    ...rest
+  } = overrides;
+
+  const segmentBody = {
     key,
     name: `Segment ${key}`,
     projectId,
-    environmentKey,
+    ...rest,
   };
-  const body = { ...defaults, ...overrides };
-  const res = await dashboardPost('/api/v1/segments').send(body).expect(201);
-  return res.body;
+  // Remove config-only fields
+  delete segmentBody.included;
+  delete segmentBody.excluded;
+  delete segmentBody.rules;
+
+  const res = await dashboardPost('/api/v1/segments').send(segmentBody).expect(201);
+  const segment = res.body;
+
+  // If config was provided, update the SegmentConfig for the test environment
+  const configUpdate: Record<string, unknown> = {};
+  if (included !== undefined) configUpdate.included = included;
+  if (excluded !== undefined) configUpdate.excluded = excluded;
+  if (rules !== undefined) configUpdate.rules = rules;
+
+  if (Object.keys(configUpdate).length > 0) {
+    await dashboardPatch(`/api/v1/segments/${key}/config/${environmentKey}`)
+      .send(configUpdate)
+      .expect(200);
+  }
+
+  return segment;
 }
 
 /** Evaluate a flag via the SDK API */
@@ -484,8 +547,8 @@ describe('Evaluation Flow Integration', () => {
 
       // 2. Open SSE connection
       const events = await collectSSEEvents(async () => {
-        // 3. Toggle the flag (triggers publish)
-        await dashboardPatch(`/api/v1/flags/${flag.key}/toggle`).expect(200);
+        // 3. Toggle the flag (triggers publish) — now requires environmentKey
+        await dashboardPatch(`/api/v1/flags/${flag.key}/toggle?environmentKey=${environmentKey}`).expect(200);
       });
 
       // 4. Assert we received a flag.updated event
@@ -494,14 +557,14 @@ describe('Evaluation Flow Integration', () => {
       expect(JSON.parse(flagEvent!.data).key).toBe(flag.key);
     });
 
-    it('should receive segment update event via SSE when a segment is modified', async () => {
+    it('should receive segment update event via SSE when a segment config is modified', async () => {
       // 1. Create a segment to modify later
       const segment = await createSegment();
 
-      // 2. Open SSE connection and patch segment
+      // 2. Open SSE connection and patch segment config
       const events = await collectSSEEvents(async () => {
-        await dashboardPatch(`/api/v1/segments/${segment.key}`)
-          .send({ name: 'Updated Name' })
+        await dashboardPatch(`/api/v1/segments/${segment.key}/config/${environmentKey}`)
+          .send({ included: ['user-test'] })
           .expect(200);
       });
 
