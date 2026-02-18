@@ -16,9 +16,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  REGION: ${{ secrets.GCP_REGION }}
-  SERVICE_NAME: ${{ secrets.CLOUD_RUN_SERVICE_NAME }}
+  PROJECT_ID: featuregate-487808
+  REGION: asia-south1
+  SERVICE_NAME: featuregate
   REPOSITORY: featuregate
 
 jobs:
@@ -36,8 +36,7 @@ jobs:
         id: auth
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
