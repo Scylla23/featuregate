@@ -13,3 +13,5 @@ coverage
 packages/website
 packages/sdk-node
 infra
+**/*.tsbuildinfo
+**/dist

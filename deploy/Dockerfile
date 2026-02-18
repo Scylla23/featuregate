@@ -32,13 +32,14 @@ RUN pnpm -F @featuregate/evaluator build
 RUN pnpm -F @featuregate/server build
 RUN pnpm -F @featuregate/dashboard build
 
-# Deploy server with production dependencies only
-RUN pnpm --filter=@featuregate/server --prod deploy /prod/server
-
-# Ensure dist folders are present in deployed location
-# (pnpm deploy may skip them if excluded by .npmignore)
-RUN cp -r packages/evaluator/dist /prod/server/node_modules/@featuregate/evaluator/dist
-RUN cp -r packages/server/dist /prod/server/dist
+# Deploy server with production deps, then inject build artifacts
+# pnpm deploy may not include dist/ folders, so we save them first
+RUN cp -r packages/evaluator/dist /tmp/evaluator-dist && \
+    cp -r packages/server/dist /tmp/server-dist && \
+    pnpm --filter=@featuregate/server --prod deploy --legacy /prod/server && \
+    cp -r /tmp/server-dist /prod/server/dist && \
+    mkdir -p /prod/server/node_modules/@featuregate/evaluator && \
+    cp -r /tmp/evaluator-dist /prod/server/node_modules/@featuregate/evaluator/dist
 
 # ===========================================================
 # Stage 3: Production image with Nginx + Node.js

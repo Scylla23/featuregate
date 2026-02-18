@@ -9,16 +9,16 @@ COPY . .
 RUN pnpm install --frozen-lockfile
 
 # Build packages
-RUN pnpm -F @featuregate/evaluator build
-RUN pnpm -F @featuregate/server build
+RUN pnpm -F @featuregate/evaluator build && \
+    pnpm -F @featuregate/server build
 
-# Deploy server (creates isolated production build)
-RUN pnpm --filter=@featuregate/server --prod deploy /prod/server
-
-# Manually ensure dist folders are present in the deployed location
-# pnpm deploy might skip dist folders if they are ignored by .npmignore
-RUN cp -r packages/evaluator/dist /prod/server/node_modules/@featuregate/evaluator/dist
-RUN cp -r packages/server/dist /prod/server/dist
+# Deploy server with production deps, then inject build artifacts
+RUN cp -r packages/evaluator/dist /tmp/evaluator-dist && \
+    cp -r packages/server/dist /tmp/server-dist && \
+    pnpm --filter=@featuregate/server --prod deploy --legacy /prod/server && \
+    cp -r /tmp/server-dist /prod/server/dist && \
+    mkdir -p /prod/server/node_modules/@featuregate/evaluator && \
+    cp -r /tmp/evaluator-dist /prod/server/node_modules/@featuregate/evaluator/dist
 
 FROM base AS runner
 WORKDIR /app
