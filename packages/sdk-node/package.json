@@ -19,6 +19,9 @@
     "publishConfig": {
         "access": "public"
     },
+    "engines": {
+        "node": ">=18.0.0"
+    },
     "sideEffects": false,
     "scripts": {
         "build": "tsup src/index.ts --format cjs,esm --dts",
@@ -26,6 +29,7 @@
         "typecheck": "tsc --noEmit"
     },
     "devDependencies": {
+        "@types/node": "^20.12.7",
         "tsup": "^8.0.2",
         "typescript": "^5.4.5"
     },
