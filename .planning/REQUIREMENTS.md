@@ -17,10 +17,10 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Health Checks
 
-- [ ] **HLTH-01**: GET /healthz returns 200 when the server process is running (liveness probe)
-- [ ] **HLTH-02**: GET /readyz returns 200 only when MongoDB and Redis connections are healthy (readiness probe)
-- [ ] **HLTH-03**: GET /readyz returns 503 when MongoDB is disconnected
-- [ ] **HLTH-04**: GET /readyz returns 503 when Redis is disconnected
+- [x] **HLTH-01**: GET /healthz returns 200 when the server process is running (liveness probe)
+- [x] **HLTH-02**: GET /readyz returns 200 only when MongoDB and Redis connections are healthy (readiness probe)
+- [x] **HLTH-03**: GET /readyz returns 503 when MongoDB is disconnected
+- [x] **HLTH-04**: GET /readyz returns 503 when Redis is disconnected
 
 ### SDK Demo Application
 
@@ -78,10 +78,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CICD-03 | Phase 1 | Pending |
 | CICD-04 | Phase 1 | Pending |
 | CICD-05 | Phase 1 | Pending |
-| HLTH-01 | Phase 1 | Pending |
-| HLTH-02 | Phase 1 | Pending |
-| HLTH-03 | Phase 1 | Pending |
-| HLTH-04 | Phase 1 | Pending |
+| HLTH-01 | Phase 1 | Complete |
+| HLTH-02 | Phase 1 | Complete |
+| HLTH-03 | Phase 1 | Complete |
+| HLTH-04 | Phase 1 | Complete |
 | DEMO-01 | Phase 2 | Pending |
 | DEMO-02 | Phase 2 | Pending |
 | DEMO-03 | Phase 2 | Pending |
@@ -97,4 +97,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-03-08*
-*Last updated: 2026-03-08 after roadmap creation*
+*Last updated: 2026-03-08 after 01-01 plan completion*

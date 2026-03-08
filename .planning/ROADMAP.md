@@ -28,7 +28,7 @@ FeatureGate is ~80% complete. This milestone delivers the remaining infrastructu
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Health check endpoints (/healthz, /readyz) with integration tests
+- [x] 01-01-PLAN.md — Health check endpoints (/healthz, /readyz) with integration tests
 - [ ] 01-02-PLAN.md — GitHub Actions CI workflow and branch protection
 
 ### Phase 2: SDK Demo Application
@@ -64,6 +64,6 @@ Phases execute in numeric order: 1 -> 2 -> 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. CI Pipeline and Health Checks | 0/2 | Not started | - |
+| 1. CI Pipeline and Health Checks | 1/2 | In progress | - |
 | 2. SDK Demo Application | 0/TBD | Not started | - |
 | 3. Documentation | 0/TBD | Not started | - |
