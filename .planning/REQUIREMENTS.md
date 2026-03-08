@@ -73,28 +73,28 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CICD-01 | — | Pending |
-| CICD-02 | — | Pending |
-| CICD-03 | — | Pending |
-| CICD-04 | — | Pending |
-| CICD-05 | — | Pending |
-| HLTH-01 | — | Pending |
-| HLTH-02 | — | Pending |
-| HLTH-03 | — | Pending |
-| HLTH-04 | — | Pending |
-| DEMO-01 | — | Pending |
-| DEMO-02 | — | Pending |
-| DEMO-03 | — | Pending |
-| DEMO-04 | — | Pending |
-| DOCS-01 | — | Pending |
-| DOCS-02 | — | Pending |
-| DOCS-03 | — | Pending |
+| CICD-01 | Phase 1 | Pending |
+| CICD-02 | Phase 1 | Pending |
+| CICD-03 | Phase 1 | Pending |
+| CICD-04 | Phase 1 | Pending |
+| CICD-05 | Phase 1 | Pending |
+| HLTH-01 | Phase 1 | Pending |
+| HLTH-02 | Phase 1 | Pending |
+| HLTH-03 | Phase 1 | Pending |
+| HLTH-04 | Phase 1 | Pending |
+| DEMO-01 | Phase 2 | Pending |
+| DEMO-02 | Phase 2 | Pending |
+| DEMO-03 | Phase 2 | Pending |
+| DEMO-04 | Phase 2 | Pending |
+| DOCS-01 | Phase 3 | Pending |
+| DOCS-02 | Phase 3 | Pending |
+| DOCS-03 | Phase 3 | Pending |
 
 **Coverage:**
 - v1 requirements: 16 total
-- Mapped to phases: 0
-- Unmapped: 16 ⚠️
+- Mapped to phases: 16
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-08*
-*Last updated: 2026-03-08 after initial definition*
+*Last updated: 2026-03-08 after roadmap creation*
