@@ -27,13 +27,13 @@ Ship a complete, deployable feature flag platform that teams can self-host with 
 - ✓ Evaluator and server integration test suites — existing
 - ✓ Docker Compose for local dev (MongoDB + Redis) — existing
 - ✓ Production Docker Compose and Dockerfiles — existing
+- ✓ Dashboard ContextTester panel with context input, presets, evaluation trace — existing
+- ✓ SDK polling fallback with SSE-to-polling, exponential backoff, recovery probes — existing
 
 ### Active
 
-- [ ] CI/CD pipeline (GitHub Actions) for PR checks, staging deploy, prod deploy, SDK publish
+- [ ] CI/CD pipeline (GitHub Actions) for PR checks and SDK publish
 - [ ] Server health check endpoints (/healthz liveness, /readyz readiness)
-- [ ] Dashboard ContextTester panel for live flag evaluation testing
-- [ ] SDK polling fallback when SSE disconnects
 - [ ] Simple Express demo application showcasing the SDK
 - [ ] README with architecture diagram, quickstart guide, and comparison table
 
