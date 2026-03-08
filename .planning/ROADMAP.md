@@ -25,11 +25,11 @@ FeatureGate is ~80% complete. This milestone delivers the remaining infrastructu
   2. A PR with a failing lint or test cannot be merged (branch protection requires CI pass)
   3. GET /healthz returns 200 when the server process is running
   4. GET /readyz returns 200 when both MongoDB and Redis are connected, and 503 when either is down
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [ ] 01-01-PLAN.md — Health check endpoints (/healthz, /readyz) with integration tests
+- [ ] 01-02-PLAN.md — GitHub Actions CI workflow and branch protection
 
 ### Phase 2: SDK Demo Application
 **Goal**: Developers can see the FeatureGate SDK in action through a runnable example application
@@ -64,6 +64,6 @@ Phases execute in numeric order: 1 -> 2 -> 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. CI Pipeline and Health Checks | 0/TBD | Not started | - |
+| 1. CI Pipeline and Health Checks | 0/2 | Not started | - |
 | 2. SDK Demo Application | 0/TBD | Not started | - |
 | 3. Documentation | 0/TBD | Not started | - |
