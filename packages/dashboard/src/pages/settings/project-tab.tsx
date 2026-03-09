@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -7,7 +7,6 @@ import {
   Trash2,
   AlertTriangle,
   X,
-  Settings,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -22,7 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CopyButton } from '@/components/copy-button';
 import { TypeToConfirmDialog } from '@/components/type-to-confirm-dialog';
@@ -36,34 +34,45 @@ import {
 } from '@/hooks/use-project-settings';
 
 export function ProjectTab() {
+  const { activeProjectId } = useProject();
+  const { data: project, isLoading } = useProjectDetail(activeProjectId);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4 p-6">
+        <Skeleton className="h-48 w-full" />
+        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-24 w-full" />
+      </div>
+    );
+  }
+
+  if (!project) return null;
+
+  // Key on project._id so form remounts with fresh state when project changes
+  return <ProjectTabForm key={project._id} project={project} />;
+}
+
+function ProjectTabForm({ project }: { project: NonNullable<ReturnType<typeof useProjectDetail>['data']> }) {
   const { activeProjectId, environments } = useProject();
   const navigate = useNavigate();
-  const { data: project, isLoading } = useProjectDetail(activeProjectId);
   const { data: tagsData } = useProjectTags(activeProjectId);
   const updateMutation = useUpdateProject();
   const deleteMutation = useDeleteProject();
   const deleteTagMutation = useDeleteProjectTag();
 
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [defaultEnvId, setDefaultEnvId] = useState<string>('none');
+  const [name, setName] = useState(project.name);
+  const [description, setDescription] = useState(project.description || '');
+  const [defaultEnvId, setDefaultEnvId] = useState<string>(
+    project.defaultEnvironmentId || 'none',
+  );
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const tags = tagsData?.tags ?? [];
   const isDirty =
-    project &&
-    (name !== project.name ||
-      description !== (project.description || '') ||
-      (defaultEnvId === 'none' ? null : defaultEnvId) !== project.defaultEnvironmentId);
-
-  // Sync from server
-  useEffect(() => {
-    if (project) {
-      setName(project.name);
-      setDescription(project.description || '');
-      setDefaultEnvId(project.defaultEnvironmentId || 'none');
-    }
-  }, [project]);
+    name !== project.name ||
+    description !== (project.description || '') ||
+    (defaultEnvId === 'none' ? null : defaultEnvId) !== project.defaultEnvironmentId;
 
   const handleSave = async () => {
     if (!activeProjectId) return;
@@ -83,7 +92,7 @@ export function ProjectTab() {
   };
 
   const handleDeleteProject = async () => {
-    if (!activeProjectId || !project) return;
+    if (!activeProjectId) return;
     try {
       await deleteMutation.mutateAsync({
         projectId: activeProjectId,
@@ -106,18 +115,6 @@ export function ProjectTab() {
       toast.error(err instanceof Error ? err.message : 'Failed to remove tag');
     }
   };
-
-  if (isLoading) {
-    return (
-      <div className="space-y-4 p-6">
-        <Skeleton className="h-48 w-full" />
-        <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-24 w-full" />
-      </div>
-    );
-  }
-
-  if (!project) return null;
 
   return (
     <div className="space-y-6 p-6">

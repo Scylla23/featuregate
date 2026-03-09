@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { listProjects, listEnvironments } from '@/api/projects';
 import type { Project, Environment } from '@/api/projects';
@@ -19,10 +19,10 @@ const ProjectContext = createContext<ProjectContextValue | null>(null);
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
 
-  const [activeProjectId, setActiveProjectIdState] = useState<string | null>(
+  const [userProjectId, setUserProjectId] = useState<string | null>(
     () => localStorage.getItem('fg_project_id'),
   );
-  const [activeEnvironmentKey, setActiveEnvironmentKeyState] = useState<string | null>(
+  const [userEnvironmentKey, setUserEnvironmentKey] = useState<string | null>(
     () => localStorage.getItem('fg_env_key'),
   );
 
@@ -32,42 +32,47 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     enabled: isAuthenticated,
   });
 
-  const projects = projectsData?.projects ?? [];
+  const projects = useMemo(() => projectsData?.projects ?? [], [projectsData]);
 
-  // Auto-select first project if none selected
+  // Derive resolved project — auto-select first if user hasn't chosen
+  const resolvedProjectId = userProjectId ?? (projects.length > 0 ? projects[0]._id : null);
+
+  // Persist auto-selected project to localStorage (no setState — just side-effect)
   useEffect(() => {
-    if (projects.length > 0 && !activeProjectId) {
-      setActiveProjectIdState(projects[0]._id);
-      localStorage.setItem('fg_project_id', projects[0]._id);
+    if (resolvedProjectId && !userProjectId) {
+      localStorage.setItem('fg_project_id', resolvedProjectId);
     }
-  }, [projects, activeProjectId]);
+  }, [resolvedProjectId, userProjectId]);
 
   const { data: envsData, isLoading: envsLoading } = useQuery({
-    queryKey: ['environments', activeProjectId],
-    queryFn: () => listEnvironments(activeProjectId!),
-    enabled: !!activeProjectId,
+    queryKey: ['environments', resolvedProjectId],
+    queryFn: () => listEnvironments(resolvedProjectId!),
+    enabled: !!resolvedProjectId,
   });
 
-  const environments = envsData?.environments ?? [];
+  const environments = useMemo(() => envsData?.environments ?? [], [envsData]);
 
-  // Auto-select first environment if none selected
+  // Derive resolved environment — auto-select first if user hasn't chosen
+  const resolvedEnvironmentKey =
+    userEnvironmentKey ?? (environments.length > 0 ? environments[0].key : null);
+
+  // Persist auto-selected environment to localStorage (no setState — just side-effect)
   useEffect(() => {
-    if (environments.length > 0 && !activeEnvironmentKey) {
-      setActiveEnvironmentKeyState(environments[0].key);
-      localStorage.setItem('fg_env_key', environments[0].key);
+    if (resolvedEnvironmentKey && !userEnvironmentKey) {
+      localStorage.setItem('fg_env_key', resolvedEnvironmentKey);
     }
-  }, [environments, activeEnvironmentKey]);
+  }, [resolvedEnvironmentKey, userEnvironmentKey]);
 
   const setActiveProjectId = useCallback((id: string) => {
-    setActiveProjectIdState(id);
+    setUserProjectId(id);
     localStorage.setItem('fg_project_id', id);
     // Reset environment when project changes
-    setActiveEnvironmentKeyState(null);
+    setUserEnvironmentKey(null);
     localStorage.removeItem('fg_env_key');
   }, []);
 
   const setActiveEnvironmentKey = useCallback((key: string) => {
-    setActiveEnvironmentKeyState(key);
+    setUserEnvironmentKey(key);
     localStorage.setItem('fg_env_key', key);
   }, []);
 
@@ -76,8 +81,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       value={{
         projects,
         environments,
-        activeProjectId,
-        activeEnvironmentKey,
+        activeProjectId: resolvedProjectId,
+        activeEnvironmentKey: resolvedEnvironmentKey,
         setActiveProjectId,
         setActiveEnvironmentKey,
         isLoading: projectsLoading || envsLoading,

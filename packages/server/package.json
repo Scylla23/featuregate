@@ -10,6 +10,7 @@
         "lint": "eslint .",
         "typecheck": "tsc --noEmit",
         "seed": "tsx src/scripts/seed.ts",
+        "test": "NODE_OPTIONS='--experimental-vm-modules' npx jest --config jest.integration.config.mjs",
         "test:integration": "NODE_OPTIONS='--experimental-vm-modules' npx jest --config jest.integration.config.mjs"
     },
     "dependencies": {

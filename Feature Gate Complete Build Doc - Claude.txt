@@ -1,0 +1,1400 @@
+
+⚑
+FeatureGate
+A Self-Hosted Feature Flag Platform with Segments, Targeting Rules,
+Percentage Rollouts, and a Published Node.js SDK
+
+Complete Build Document
+Architecture • Data Models • API Design • Evaluation Engine • SDK • Deployment
+Prepared for Pavankumar Kushnure  •  February 2026
+
+Table of Contents
+1. What You’re Building & Why It Matters
+2. Competitive Landscape (LaunchDarkly, Unleash, Flipt)
+3. System Architecture
+4. Data Models (MongoDB Schemas)
+5. Flag Evaluation Engine (The Core Algorithm)
+6. Segments & Targeting Rules
+7. API Reference
+8. Node.js SDK Design
+9. Real-Time Updates (SSE)
+10. Dashboard UI (React)
+11. Tech Stack & Repo Structure
+12. 4-Week Build Plan
+13. Cloud Deployment, Containerization & CI/CD
+    13.1 Containerization (Docker)
+    13.2 CI/CD Pipeline (GitHub Actions)
+    13.3 Cloud Infrastructure (Terraform)
+    13.4 Health Check Endpoints
+    13.5 Environment Strategy
+    13.6 Cost Breakdown
+    13.7 Getting Users
+14. Open-Source Strategy
+15. Resume Bullet
+
+1. What You’re Building & Why It Matters
+FeatureGate is a self-hosted feature flag platform that lets engineering teams control feature rollouts without redeploying code. It provides a management dashboard, a flag evaluation API, user segments with rule-based targeting, percentage rollouts, and a published Node.js SDK — essentially a lightweight, open-source alternative to LaunchDarkly.
+Why This Project Is a Hiring Signal
+Feature flag systems sit at the intersection of backend infrastructure, SDK design, and product engineering. Building one demonstrates that you understand progressive delivery, can design rule evaluation engines, and can ship developer tools that other engineers depend on. It’s the kind of project a Staff engineer would build, not a junior developer following a tutorial.
+⚡ The Doubts This Kills:  "Can this person build platform/infrastructure tooling?" "Do they understand SDK contracts, caching, and real-time propagation?" "Can they design systems beyond CRUD?"
+Your Differentiator vs. Existing Tools
+	•	LaunchDarkly: Enterprise SaaS, starts at $10.50/seat/month. Powerful but expensive and closed-source.
+	•	Unleash: Popular OSS (10K+ stars), but written in TypeScript with a complex setup and PostgreSQL dependency.
+	•	Flipt: Lightweight Go binary, Git-native. Minimal UI and limited targeting.
+	•	FeatureGate: Node.js-native (aligns with your stack), MongoDB-backed, simple Docker setup, first-class segments + targeting rules, and a beautiful React dashboard. Positioned for Node.js teams who want a LaunchDarkly-like experience without the cost.
+
+2. Competitive Landscape — What to Learn From Each
+LaunchDarkly — The Gold Standard
+LaunchDarkly’s architecture reveals several design patterns you should adopt:
+	•	Evaluation Order: Flag off check → Prerequisites → Individual targets → Targeting rules (top to bottom) → Default rule (fallthrough). This is the exact evaluation hierarchy you’ll implement.
+	•	Segments: Reusable groups of users defined by rules or explicit member lists. A segment can be targeted by multiple flags, so you manage the audience in one place. Segments can include individual targets, custom rules (attribute-based), and even other segments.
+	•	Targeting Rules: Each rule has conditions (attribute + operator + value) and a rollout (serve a specific variation or a percentage split). Rules are evaluated top-to-bottom; first match wins.
+	•	Multivariate Flags: Flags can have multiple variations (not just true/false). Variations can be any JSON type: boolean, string, number, or object.
+	•	Consistent Hashing: For percentage rollouts, LaunchDarkly hashes the user key to deterministically assign users to variations. Same user always gets the same variation.
+	•	SDK Architecture: Server-side SDKs evaluate flags locally (in-memory cache of all flag data). Client-side SDKs call the server. Updates are streamed via SSE (Server-Sent Events) with ~200ms propagation.
+Unleash — What to Adopt
+	•	Docker-first deployment (docker-compose up and you’re running).
+	•	Strategies pattern: activation strategies (gradual rollout, user IDs, IPs) that you attach to flags.
+	•	Clear API docs and SDK conventions.
+Flipt — What to Adopt
+	•	Single-binary simplicity and lightweight footprint.
+	•	Git-native flag storage (great for audit trails).
+	•	Clean evaluation API design.
+
+
+3. System Architecture
+The system runs as containerized services on AWS or GCP, with a full CI/CD pipeline from GitHub Actions through to production. Here’s the complete infrastructure view:
+┌───────────────────────────────────────────────────────────────┐
+│         FEATUREGATE — CLOUD ARCHITECTURE (AWS/GCP)           │
+└───────────────────────────────────────────────────────────────┘
+ 
+  ┌───────────────────── CI/CD PIPELINE ────────────────────┐
+  │  GitHub Actions                                           │
+  │  push → lint → test → build Docker → push to ECR/GCR    │
+  │       → Terraform apply → deploy to ECS/Cloud Run       │
+  └─────────────────────────────┬─────────────────────────────┘
+                                │
+  ┌─────────────────────────────┴─────────────────────────────┐
+  │  AWS (ECR + ECS Fargate)  or  GCP (GCR + Cloud Run)       │
+  │                                                            │
+  │   ┌───────────────┐   ┌───────────────────────────────┐  │
+  │   │  Nginx        │   │  Container: API Server          │  │
+  │   │  (ALB / LB)   │──>│  Node.js/Express (port 3000)    │  │
+  │   │               │   │  Health check: /healthz         │  │
+  │   └───────────────┘   └─────────┬─────────────────────┘  │
+  │               │                 │                          │
+  │   ┌───────────────┐   ┌───────┼─────────────┐          │
+  │   │  Container:  │   │                     │          │
+  │   │  Dashboard   │   │                     │          │
+  │   │  (Nginx +    │   │                     │          │
+  │   │   React SPA) │   │                     │          │
+  │   └───────────────┘   │                     │          │
+  │                     ┌┴────────────┐ ┌──┴──────────┐  │
+  │                     │ MongoDB      │ │ Redis        │  │
+  │                     │ Atlas /      │ │ ElastiCache  │  │
+  │                     │ DocumentDB   │ │ / Memorystore│  │
+  │                     └─────────────┘ └─────────────┘  │
+  └────────────────────────────────────────────────────────────┘
+ 
+  ┌────────────────────────────────────────────┐
+  │  Your Application                             │
+  │  ┌────────────────────────────────────────┐  │
+  │  │  @featuregate/node-sdk                    │  │
+  │  │  - In-memory flag cache                   │  │
+  │  │  - SSE listener for real-time updates     │  │
+  │  │  - Local evaluation engine                │  │
+  │  │  - isEnabled('flag', { user context })    │  │
+  │  └────────────────────────────────────────┘  │
+  └────────────────────────────────────────────┘
+Component Responsibilities
+	•	API Server (Node.js/Express): Flag CRUD, segment CRUD, evaluation endpoint, audit log, SSE broadcaster. This is the brain.
+	•	MongoDB: Primary data store for flags, segments, environments, projects, and audit logs.
+	•	Redis: Two roles — (1) Cache: store compiled flag evaluation data for <10ms reads. (2) Pub/Sub: broadcast flag change events to all connected SSE clients and SDK instances.
+	•	React Dashboard: Management UI for creating/editing flags, segments, and viewing audit history.
+	•	Node.js SDK: Published npm package that embeds in your application. Caches all flag data in memory, evaluates flags locally (zero network latency per check), and listens for updates via SSE.
+Data Flow: Flag Evaluation
+	•	SDK initializes: fetches all flag + segment data from GET /api/v1/flags/all and caches in memory.
+	•	SDK opens SSE connection: GET /api/v1/stream. Server pushes flag.updated, segment.updated events.
+	•	Application calls sdk.isEnabled('new-checkout', { userId: '123', plan: 'pro', country: 'US' }).
+	•	SDK evaluates locally against cached flag data. No network call. Returns result in <1ms.
+	•	When a flag is updated in the dashboard, API writes to MongoDB, invalidates Redis cache, publishes to Redis Pub/Sub channel.
+	•	SSE broadcaster picks up the Pub/Sub message and pushes the updated flag data to all connected SDKs.
+	•	SDK updates its in-memory cache. Next evaluation uses the new data. Total propagation: <500ms.
+
+
+4. Data Models (MongoDB Schemas)
+These are your core collections. Each schema is designed with the evaluation engine in mind — every field exists because the evaluator needs it.
+4.1 Flag
+Field
+Type
+Description
+_id
+ObjectId
+Auto-generated MongoDB ID
+key
+String
+Unique flag identifier (e.g., 'new-checkout'). URL-safe, lowercase, hyphens. Immutable after creation.
+name
+String
+Human-readable display name (e.g., 'New Checkout Flow')
+description
+String
+Optional description of what this flag controls
+projectId
+ObjectId
+Which project this flag belongs to
+environmentKey
+String
+Environment scope (e.g., 'production', 'staging')
+enabled
+Boolean
+Master toggle. If false, always return offVariation. No rules evaluated.
+variations
+Array
+Array of variation values. e.g., [{ value: true }, { value: false }] or [{ value: 'control' }, { value: 'variant-a' }, { value: 'variant-b' }]
+offVariation
+Number
+Index into variations array. Served when enabled=false.
+fallthrough
+Object
+Default rule when no targeting rules match. Contains { variation: Number } or { rollout: { variations: [{ variation, weight }] } }
+targets
+Array
+Individual user targeting. Array of { variation: Number, values: [userId1, userId2] }. Highest priority after enabled check.
+rules
+Array
+Ordered array of targeting rules. Each rule has: { id, description, clauses[], rollout }. Evaluated top-to-bottom, first match wins.
+tags
+Array
+Optional tags for organization (e.g., ['frontend', 'experiment'])
+createdAt
+Date
+Timestamp
+updatedAt
+Date
+Timestamp
+Variation Schema (embedded)
+{
+  value: Mixed,       // true, false, "string", 42, { key: "val" }
+  name: String,       // Optional: "Control", "Variant A"
+  description: String // Optional
+}
+Rule Schema (embedded in Flag.rules[])
+This is the heart of the targeting system. Each rule is a set of conditions (clauses) and a rollout strategy.
+Field
+Type
+Description
+id
+String
+UUID for this rule. Used for audit log references.
+description
+String
+Human-readable label (e.g., 'Beta testers get variant A')
+clauses
+Array
+Array of conditions. ALL must match (AND logic within a rule). Each clause: { attribute, operator, values, negate }
+rollout
+Object
+What to serve when all clauses match. Either { variation: Number } for a fixed variation, or { variations: [{ variation, weight }] } for percentage split.
+Clause Schema (embedded in Rule.clauses[])
+A clause is a single condition like "country is one of [US, CA]" or "user is in segment beta-testers".
+Field
+Type
+Description
+attribute
+String
+The context attribute to check (e.g., 'email', 'plan', 'country'). Special value: 'segmentMatch' for segment targeting.
+operator
+String
+Comparison operator. See Operator Reference below.
+values
+Array
+Values to compare against. For 'in' operator: ['US','CA']. For 'segmentMatch': ['segment-id-1','segment-id-2'].
+negate
+Boolean
+If true, invert the result. 'country is NOT one of [US, CA]'.
+Operator Reference
+Operator        | Description                         | Example
+────────────────+─────────────────────────────────────+────────────────────
+in              | Value is one of [...]                | plan in ['pro','ent']
+notIn           | Value is not one of [...]            | country notIn ['CN']
+contains        | String contains substring            | email contains '@acme'
+startsWith      | String starts with prefix            | email startsWith 'admin'
+endsWith        | String ends with suffix              | email endsWith '.edu'
+matches         | Regex match                          | name matches '^test-'
+greaterThan     | Numeric >                            | age greaterThan 18
+lessThan        | Numeric <                            | version lessThan 5
+semverEqual     | Semantic version ==                  | appVersion == '2.1.0'
+semverGreaterThan| Semver >                            | appVersion > '1.0.0'
+semverLessThan  | Semver <                             | appVersion < '3.0.0'
+segmentMatch    | User belongs to segment(s)           | segmentMatch ['seg-id']
+
+4.2 Segment
+Segments are reusable groups of users. Instead of duplicating the same targeting rules across 20 flags, you define a segment once and reference it. This is the feature you specifically asked for.
+Field
+Type
+Description
+_id
+ObjectId
+Auto-generated
+key
+String
+Unique identifier (e.g., 'beta-testers', 'enterprise-us')
+name
+String
+Display name ('Enterprise US Customers')
+description
+String
+What this segment represents
+projectId
+ObjectId
+Project scope
+environmentKey
+String
+Environment scope
+included
+Array
+Explicit user IDs always IN this segment (override rules)
+excluded
+Array
+Explicit user IDs always EXCLUDED from this segment (highest priority)
+rules
+Array
+Array of segment rules. Each has clauses[]. If ANY rule matches, user is in segment (OR logic between rules).
+tags
+Array
+Optional tags
+createdAt
+Date
+Timestamp
+updatedAt
+Date
+Timestamp
+Segment Rule Schema (embedded in Segment.rules[])
+Field
+Type
+Description
+id
+String
+UUID
+clauses
+Array
+Same clause schema as flag rules. { attribute, operator, values, negate }
+weight
+Number
+Optional: 0–100000. If set, only this percentage of matching users are included. Uses consistent hashing.
+bucketBy
+String
+Optional: which attribute to hash for percentage (default: 'key'). e.g., 'companyId' to roll out per-company.
+💡 Key Design Decision:  Segments use OR logic between rules (any rule match = in segment), while flag targeting rules use AND logic between clauses within a single rule (all clauses must match). This matches LaunchDarkly’s behavior and is intuitive: a segment can include "all enterprise users OR all US users."
+Example: Creating a “Beta Testers” Segment
+{
+  "key": "beta-testers",
+  "name": "Beta Testers",
+  "description": "Users opted into our beta program",
+  "included": ["user-42", "user-99"],     // Always in, no matter what
+  "excluded": ["user-666"],               // Always out, even if rules match
+  "rules": [
+    {
+      "id": "rule-1",
+      "clauses": [
+        { "attribute": "plan", "operator": "in", "values": ["enterprise"] },
+        { "attribute": "betaOptIn", "operator": "in", "values": [true] }
+      ]
+      // No weight = 100% of matches included
+    },
+    {
+      "id": "rule-2",
+      "clauses": [
+        { "attribute": "email", "operator": "endsWith", "values": ["@yourdomain.com"] }
+      ]
+      // All internal team members
+    }
+  ]
+}
+This segment includes: user-42 and user-99 (explicit), any enterprise user who opted in to beta, and anyone with a company email. User-666 is always excluded even if they match a rule.
+
+4.3 Audit Log
+Field
+Type
+Description
+_id
+ObjectId
+Auto-generated
+action
+String
+flag.created, flag.updated, flag.toggled, segment.created, segment.updated
+resourceType
+String
+'flag' or 'segment'
+resourceKey
+String
+The flag or segment key
+author
+String
+Who made the change (email or API key name)
+timestamp
+Date
+When the change was made
+previousValue
+Object
+Snapshot of the resource before the change (diffable)
+currentValue
+Object
+Snapshot after the change
+diff
+Object
+Computed diff of what changed (for UI display)
+4.4 Environment & Project
+Keep these lightweight for MVP. A Project contains flags and segments. An Environment (production, staging, development) scopes flag state independently.
+// Project
+{ _id, key: "my-app", name: "My Application", createdAt }
+ 
+// Environment  
+{ _id, key: "production", name: "Production", projectId, 
+  sdkKey: "sdk-prod-xxxx",    // Used by SDK to authenticate
+  createdAt }
+
+
+5. Flag Evaluation Engine (The Core Algorithm)
+This is the most important piece of code in the entire project. The evaluation engine determines which variation a user gets. It runs both server-side (in the API for the /evaluate endpoint) and client-side (in the Node.js SDK for local evaluation).
+🎯 Critical Principle:  The evaluation engine must be deterministic. Given the same flag configuration and user context, it must always return the same result. This is why percentage rollouts use consistent hashing, not Math.random().
+Evaluation Order (exactly matches LaunchDarkly)
+function evaluate(flag, context, segments) {
+  // Step 1: Is the flag enabled?
+  if (!flag.enabled) {
+    return {
+      value: flag.variations[flag.offVariation].value,
+      variationIndex: flag.offVariation,
+      reason: { kind: 'OFF' }
+    };
+  }
+ 
+  // Step 2: Check individual targets (highest priority)
+  for (const target of flag.targets || []) {
+    if (target.values.includes(context.key)) {
+      return {
+        value: flag.variations[target.variation].value,
+        variationIndex: target.variation,
+        reason: { kind: 'TARGET_MATCH' }
+      };
+    }
+  }
+ 
+  // Step 3: Evaluate targeting rules (top to bottom, first match wins)
+  for (let i = 0; i < (flag.rules || []).length; i++) {
+    const rule = flag.rules[i];
+    if (matchesRule(rule, context, segments)) {
+      const result = resolveRollout(rule.rollout, context, flag);
+      return {
+        ...result,
+        reason: { kind: 'RULE_MATCH', ruleIndex: i, ruleId: rule.id }
+      };
+    }
+  }
+ 
+  // Step 4: Fallthrough (default rule)
+  const result = resolveRollout(flag.fallthrough, context, flag);
+  return {
+    ...result,
+    reason: { kind: 'FALLTHROUGH' }
+  };
+}
+Rule Matching
+function matchesRule(rule, context, segments) {
+  // ALL clauses must match (AND logic)
+  return rule.clauses.every(clause => {
+    const result = evaluateClause(clause, context, segments);
+    return clause.negate ? !result : result;
+  });
+}
+ 
+function evaluateClause(clause, context, segments) {
+  // Special case: segment matching
+  if (clause.attribute === 'segmentMatch') {
+    return clause.values.some(segKey => 
+      isUserInSegment(context, segments[segKey])
+    );
+  }
+ 
+  const userValue = context[clause.attribute];
+  if (userValue === undefined) return false;
+ 
+  switch (clause.operator) {
+    case 'in':        return clause.values.includes(userValue);
+    case 'notIn':     return !clause.values.includes(userValue);
+    case 'contains':  return clause.values.some(v => 
+                        String(userValue).includes(v));
+    case 'startsWith': return clause.values.some(v => 
+                        String(userValue).startsWith(v));
+    case 'endsWith':  return clause.values.some(v => 
+                        String(userValue).endsWith(v));
+    case 'matches':   return clause.values.some(v => 
+                        new RegExp(v).test(String(userValue)));
+    case 'greaterThan': return Number(userValue) > Number(clause.values[0]);
+    case 'lessThan':  return Number(userValue) < Number(clause.values[0]);
+    // semver operators omitted for brevity
+    default:          return false;
+  }
+}
+Segment Evaluation
+function isUserInSegment(context, segment) {
+  if (!segment) return false;
+ 
+  // Excluded list takes highest priority
+  if (segment.excluded.includes(context.key)) return false;
+ 
+  // Included list takes second priority
+  if (segment.included.includes(context.key)) return true;
+ 
+  // Evaluate segment rules (OR logic: any rule match = in segment)
+  return segment.rules.some(rule => {
+    const clausesMatch = rule.clauses.every(clause => {
+      const result = evaluateClause(clause, context, {});
+      return clause.negate ? !result : result;
+    });
+ 
+    if (!clausesMatch) return false;
+ 
+    // If weight is set, apply percentage check
+    if (rule.weight !== undefined && rule.weight < 100000) {
+      const bucketBy = rule.bucketBy || 'key';
+      const bucket = hashUser(context[bucketBy], segment.key);
+      return bucket < rule.weight;
+    }
+ 
+    return true;
+  });
+}
+Consistent Hashing for Percentage Rollouts
+This is what makes percentage rollouts deterministic. User "abc" always gets the same bucket, so they always see the same variation.
+const murmurhash = require('murmurhash');
+ 
+function hashUser(userKey, salt) {
+  // Returns a value 0-99999 (maps to 0-100% in units of 0.001%)
+  const hash = murmurhash.v3(String(userKey) + '.' + salt);
+  return hash % 100000;
+}
+ 
+function resolveRollout(rollout, context, flag) {
+  // Fixed variation
+  if (rollout.variation !== undefined) {
+    return {
+      value: flag.variations[rollout.variation].value,
+      variationIndex: rollout.variation
+    };
+  }
+ 
+  // Percentage rollout
+  const bucketBy = rollout.bucketBy || 'key';
+  const bucket = hashUser(context[bucketBy], flag.key);
+ 
+  let cumulative = 0;
+  for (const weighted of rollout.variations) {
+    cumulative += weighted.weight;
+    if (bucket < cumulative) {
+      return {
+        value: flag.variations[weighted.variation].value,
+        variationIndex: weighted.variation
+      };
+    }
+  }
+ 
+  // Fallback to last variation (shouldn't reach here if weights sum to 100000)
+  const last = rollout.variations[rollout.variations.length - 1];
+  return {
+    value: flag.variations[last.variation].value,
+    variationIndex: last.variation
+  };
+}
+
+
+6. Segments & Targeting Rules — Deep Dive
+This section covers the complete workflow for segments since this is your key requested feature.
+6.1 How Segments Connect to Flags
+Segments and flags are connected through the segmentMatch clause type. When a flag’s targeting rule has a clause with attribute: 'segmentMatch', the evaluation engine looks up the referenced segments and checks if the current user is a member.
+// Example: Flag rule that targets a segment
+{
+  "rules": [
+    {
+      "id": "rule-1",
+      "description": "Enable for beta testers",
+      "clauses": [
+        {
+          "attribute": "segmentMatch",
+          "operator": "in",
+          "values": ["beta-testers"]   // segment key
+        }
+      ],
+      "rollout": { "variation": 0 }   // serve 'true' variation
+    },
+    {
+      "id": "rule-2",
+      "description": "10% rollout for enterprise US",
+      "clauses": [
+        {
+          "attribute": "segmentMatch",
+          "operator": "in",
+          "values": ["enterprise-us"]
+        }
+      ],
+      "rollout": {
+        "variations": [
+          { "variation": 0, "weight": 10000 },  // 10% get true
+          { "variation": 1, "weight": 90000 }   // 90% get false
+        ]
+      }
+    }
+  ]
+}
+6.2 Segment Use Cases
+Use Case 1: Internal Team Testing
+Create a segment "internal-team" with a rule: email endsWith '@yourcompany.com'. Use this across all feature flags to give your team early access to everything.
+Use Case 2: Enterprise Tier Gating
+Create a segment "enterprise-customers" with a rule: plan in ['enterprise']. When you launch a new enterprise-only feature, target this segment instead of hardcoding plan checks in every flag.
+Use Case 3: Regional Rollout
+Create segments "users-us", "users-eu", "users-apac" with country-based rules. Roll out a feature to US first (100%), then EU (50%), then APAC (10%) by targeting each segment with different rollout percentages.
+Use Case 4: Beta Program with Opt-In
+Create a segment "beta-opted-in" with: (a) explicit user IDs in the included list for VIP beta users, (b) a rule: betaOptIn in [true] for self-service opt-in, and (c) a rule: email endsWith '.edu' with weight 50000 for 50% of education users.
+6.3 Segment Targeting in the Dashboard UI
+The dashboard should provide a visual builder for segments. Here’s the UX flow:
+	•	User navigates to Segments tab and clicks "Create Segment"
+	•	Enters segment key, name, and description
+	•	Adds included users (individual IDs, like LaunchDarkly’s individual targeting)
+	•	Adds excluded users (override — always excluded regardless of rules)
+	•	Builds rules visually: "IF [attribute] [operator] [values] AND ..." + optional % weight
+	•	Saves segment. Dashboard shows which flags reference this segment.
+
+
+7. API Reference
+All endpoints are prefixed with /api/v1. Authentication is via SDK key (X-API-Key header) or session cookie (dashboard).
+7.1 Flag Endpoints
+Method
+Endpoint
+Description
+POST
+/flags
+Create a new feature flag
+GET
+/flags
+List all flags (with pagination, search, tag filter)
+GET
+/flags/:key
+Get a single flag by key
+PATCH
+/flags/:key
+Update flag (partial update with JSON Patch)
+DELETE
+/flags/:key
+Archive a flag (soft delete)
+PATCH
+/flags/:key/toggle
+Toggle flag enabled/disabled
+POST
+/flags/:key/evaluate
+Evaluate a flag for a given context (server-side)
+7.2 Segment Endpoints
+Method
+Endpoint
+Description
+POST
+/segments
+Create a new segment
+GET
+/segments
+List all segments
+GET
+/segments/:key
+Get a single segment
+PATCH
+/segments/:key
+Update segment rules, included/excluded lists
+DELETE
+/segments/:key
+Archive a segment
+POST
+/segments/:key/check
+Check if a context matches this segment
+GET
+/segments/:key/flags
+List all flags that reference this segment
+7.3 Evaluation Endpoints (used by SDK)
+Method
+Endpoint
+Description
+GET
+/sdk/flags
+Get all flags + segments for SDK initialization (requires SDK key)
+POST
+/sdk/evaluate
+Evaluate a single flag server-side (for client SDKs)
+POST
+/sdk/evaluate/batch
+Evaluate multiple flags at once
+GET
+/sdk/stream
+SSE endpoint for real-time flag updates
+7.4 Audit Log & Other
+Method
+Endpoint
+Description
+GET
+/audit-log
+List audit events (paginated, filterable by resource, action, author)
+GET
+/projects
+List projects
+GET
+/environments
+List environments for a project
+Example: Evaluate Endpoint Request/Response
+// POST /api/v1/sdk/evaluate
+// Headers: X-API-Key: sdk-prod-xxxx
+{
+  "flagKey": "new-checkout",
+  "context": {
+    "key": "user-123",
+    "email": "john@acme.com",
+    "plan": "enterprise",
+    "country": "US",
+    "betaOptIn": true
+  }
+}
+ 
+// Response:
+{
+  "flagKey": "new-checkout",
+  "value": true,
+  "variationIndex": 0,
+  "reason": {
+    "kind": "RULE_MATCH",
+    "ruleIndex": 0,
+    "ruleId": "rule-beta-testers"
+  }
+}
+
+
+8. Node.js SDK Design
+The SDK is a separate npm package (@featuregate/node-sdk) that your users install in their applications. This is the public API contract — design it carefully.
+SDK Public API
+const { FeatureGateClient } = require('@featuregate/node-sdk');
+ 
+// Initialize (fetches all flags, opens SSE connection)
+const client = new FeatureGateClient({
+  sdkKey: 'sdk-prod-xxxx',
+  baseUrl: 'https://your-featuregate-server.com',
+  // Optional:
+  pollingInterval: 30000,    // Fallback polling (if SSE disconnects)
+  flushInterval: 10000,      // How often to flush evaluation events
+  offline: false,             // Set true for testing
+});
+ 
+await client.waitForInitialization();
+ 
+// Evaluate a boolean flag
+const enabled = client.isEnabled('new-checkout', {
+  key: 'user-123',
+  email: 'john@acme.com',
+  plan: 'enterprise',
+  country: 'US'
+});
+ 
+// Evaluate with a default value
+const enabled2 = client.isEnabled('new-checkout', context, false);
+ 
+// Get variation value (for multivariate flags)
+const variant = client.variation('checkout-theme', context, 'control');
+// Returns: 'control' | 'variant-a' | 'variant-b'
+ 
+// Get evaluation detail (for debugging)
+const detail = client.variationDetail('new-checkout', context, false);
+// Returns: { value: true, variationIndex: 0, 
+//            reason: { kind: 'RULE_MATCH', ruleId: '...' } }
+ 
+// Get all flag values for a context (for frontend bootstrapping)
+const allFlags = client.allFlagsState(context);
+// Returns: { 'new-checkout': true, 'checkout-theme': 'variant-a', ... }
+ 
+// Listen for flag changes
+client.on('update', (flagKey) => {
+  console.log(`Flag ${flagKey} was updated`);
+});
+ 
+// Cleanup
+client.close();
+SDK Internal Architecture
+	•	FlagStore: In-memory Map<string, FlagConfig> holding all flag definitions.
+	•	SegmentStore: In-memory Map<string, SegmentConfig> holding all segments.
+	•	Evaluator: Pure function module (the same evaluation engine from Section 5). No side effects, fully testable.
+	•	SSEClient: EventSource connection to /api/v1/sdk/stream. On flag.updated event, update FlagStore. On segment.updated, update SegmentStore.
+	•	Poller: Fallback polling every N seconds if SSE disconnects. Calls GET /api/v1/sdk/flags.
+	•	EventBuffer: Batches evaluation events and flushes to POST /api/v1/sdk/events every N seconds (for analytics).
+SDK Error Handling
+	•	If initialization fails (network error), the SDK should fall back to default values (not crash the host app).
+	•	If SSE disconnects, switch to polling mode automatically. Reconnect SSE with exponential backoff.
+	•	All public methods should be synchronous after initialization (they read from memory, no async needed).
+	•	Emit events: 'ready', 'update', 'error' for the consuming application to listen to.
+
+9. Real-Time Updates (SSE)
+Server-Sent Events are the propagation mechanism. When a flag or segment changes, the update reaches all connected SDKs within milliseconds.
+Why SSE Over WebSockets
+	•	SSE is unidirectional (server → client), which is exactly what flag updates need. The SDK never sends data back through this channel.
+	•	SSE auto-reconnects natively in browsers and most libraries. WebSockets require manual reconnection logic.
+	•	SSE uses standard HTTP, so it works through proxies and load balancers without special configuration.
+	•	This is a great interview talking point — it shows you know when NOT to use WebSockets.
+Implementation
+// Server: SSE endpoint
+app.get('/api/v1/sdk/stream', authenticateSDK, (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+  });
+ 
+  // Send initial heartbeat
+  res.write('event: heartbeat\ndata: {}\n\n');
+ 
+  // Subscribe to Redis Pub/Sub
+  const channel = `flag-updates:${req.environment.key}`;
+  const subscriber = redis.duplicate();
+  subscriber.subscribe(channel);
+ 
+  subscriber.on('message', (ch, message) => {
+    const event = JSON.parse(message);
+    res.write(`event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`);
+  });
+ 
+  // Heartbeat every 30s to keep connection alive
+  const heartbeat = setInterval(() => {
+    res.write('event: heartbeat\ndata: {}\n\n');
+  }, 30000);
+ 
+  req.on('close', () => {
+    subscriber.unsubscribe();
+    subscriber.quit();
+    clearInterval(heartbeat);
+  });
+});
+ 
+// When a flag is updated, publish to Redis Pub/Sub
+async function onFlagUpdated(flag, environmentKey) {
+  const channel = `flag-updates:${environmentKey}`;
+  await redis.publish(channel, JSON.stringify({
+    type: 'flag.updated',
+    data: { key: flag.key, flag: serializeFlag(flag) }
+  }));
+}
+
+
+10. Dashboard UI (React)
+The dashboard is your demo piece. It’s what you screen-record in the Loom video and what hiring managers will click on.
+Core Pages
+	•	Flags List: Table of all flags with name, key, status (on/off toggle), tags, last modified, and evaluation count. Search and filter. One-click toggle.
+	•	Flag Detail / Targeting: The main editing page. Shows: variations editor, individual targets, targeting rules builder (visual clause builder with dropdowns for attribute/operator/values + drag-and-drop reordering), default rule with percentage sliders, and a live evaluation tester (enter context JSON, see which variation they’d get and why).
+	•	Segments List: Table of segments with name, key, rule count, and number of flags referencing each segment.
+	•	Segment Detail: Included/excluded user lists, visual rule builder (same component as flag rules), list of flags that target this segment, and a segment tester (enter context, check if they’d be in the segment).
+	•	Audit Log: Timeline of all changes with author, action, timestamp, and expandable diff view.
+	•	Settings: Environment switcher, SDK key display (with copy button), project settings.
+Key UI Components to Build
+	•	RuleBuilder: Reusable component for both flag rules and segment rules. Renders clause rows with attribute/operator/value dropdowns. Add/remove clause buttons. Drag handle for reordering rules.
+	•	PercentageRolloutSlider: Visual slider showing variation percentage split with color-coded sections. Drag to adjust weights. Shows exact percentages.
+	•	ContextTester: Input panel where you paste or type a JSON context and see the evaluation result in real-time. Shows the matching rule, the reason, and the variation returned.
+	•	AuditDiff: Side-by-side diff viewer showing what changed in a flag/segment update.
+Tech Choices for Dashboard
+	•	React + Vite (fast dev server, simple setup)
+	•	Tailwind CSS (utility-first, fast to style)
+	•	React Query / TanStack Query (server state management, caching, optimistic updates)
+	•	React DnD or dnd-kit (for drag-and-drop rule reordering)
+	•	Recharts (for evaluation count charts on the flag detail page)
+
+11. Tech Stack & Repo Structure
+Complete Tech Stack
+Backend:       Node.js, Express, TypeScript
+Database:      MongoDB Atlas / AWS DocumentDB (Mongoose ODM)
+Cache:         Redis (AWS ElastiCache / GCP Memorystore)
+Frontend:      React, Vite, Tailwind CSS, TanStack Query
+SDK:           TypeScript, EventSource (SSE), murmurhash
+Testing:       Jest (unit + integration), Supertest (API)
+Containers:    Docker (multi-stage builds), Docker Compose (local dev)
+CI/CD:         GitHub Actions (lint → test → build → push → deploy)
+Registry:      AWS ECR or GCP Artifact Registry
+Orchestration: AWS ECS Fargate or GCP Cloud Run (serverless containers)
+IaC:           Terraform (all cloud resources version-controlled)
+Networking:    AWS ALB / GCP Cloud Load Balancing, custom domain + TLS
+Monitoring:    CloudWatch / Cloud Logging, health check endpoints
+Monorepo Structure
+featuregate/
+├── packages/
+│   ├── server/          # Express API server
+│   │   ├── src/
+│   │   │   ├── routes/      # flags, segments, sdk, audit
+│   │   │   ├── models/      # Mongoose schemas
+│   │   │   ├── services/    # business logic
+│   │   │   ├── engine/      # evaluation engine (shared with SDK)
+│   │   │   ├── middleware/   # auth, validation, error handling
+│   │   │   ├── sse/         # SSE broadcaster
+│   │   │   └── index.ts
+│   │   ├── tests/
+│   │   ├── Dockerfile       # Multi-stage: build → slim Node alpine
+│   │   ├── .dockerignore
+│   │   └── package.json
+│   ├── dashboard/       # React frontend
+│   │   ├── src/
+│   │   │   ├── pages/       # FlagsList, FlagDetail, Segments...
+│   │   │   ├── components/  # RuleBuilder, RolloutSlider...
+│   │   │   ├── hooks/       # useFlags, useSegments, useAudit
+│   │   │   └── api/         # API client functions
+│   │   ├── Dockerfile       # Multi-stage: build → Nginx serving SPA
+│   │   ├── nginx.conf       # SPA routing, gzip, cache headers
+│   │   └── package.json
+│   ├── sdk-node/        # Published npm package
+│   │   ├── src/
+│   │   │   ├── client.ts    # FeatureGateClient class
+│   │   │   ├── evaluator.ts # Shared evaluation engine
+│   │   │   ├── store.ts     # In-memory flag + segment store
+│   │   │   ├── sse.ts       # SSE connection manager
+│   │   │   └── index.ts     # Public exports
+│   │   ├── tests/
+│   │   └── package.json # name: @featuregate/node-sdk
+│   └── evaluator/       # Shared evaluation engine (imported by both)
+│       ├── src/
+│       │   ├── evaluate.ts
+│       │   ├── clauses.ts
+│       │   ├── segments.ts
+│       │   └── hash.ts
+│       └── package.json
+├── infra/                   # Terraform IaC (all cloud resources)
+│   ├── main.tf              # Provider config, backend (S3/GCS state)
+│   ├── variables.tf         # Configurable: region, instance sizes, env
+│   ├── outputs.tf           # ALB URL, ECR repo URI, service URLs
+│   ├── modules/
+│   │   ├── networking/      # VPC, subnets, security groups
+│   │   ├── ecs/             # ECS cluster, task defs, services
+│   │   ├── database/        # MongoDB Atlas or DocumentDB config
+│   │   └── cache/           # ElastiCache / Memorystore Redis
+│   ├── environments/
+│   │   ├── staging.tfvars
+│   │   └── production.tfvars
+│   └── README.md            # Infra setup guide
+├── .github/
+│   ├── workflows/
+│   │   ├── ci.yml           # PR: lint + test + build (no deploy)
+│   │   ├── deploy-staging.yml   # Push to main: deploy to staging
+│   │   ├── deploy-prod.yml      # Tag release: deploy to production
+│   │   └── publish-sdk.yml      # SDK version bump: publish to npm
+│   └── CODEOWNERS
+├── docker-compose.yml   # Local dev: server + dashboard + mongo + redis
+├── docker-compose.prod.yml  # Production-like local testing
+├── README.md
+├── CONTRIBUTING.md
+├── LICENSE              # MIT
+└── package.json         # Workspace root (npm workspaces or turborepo)
+💡 Key Architecture Decision:  The evaluation engine lives in its own shared package (packages/evaluator). Both the server and the SDK import it. This means the evaluation logic is identical in both places, and you only have to maintain it once. This is exactly how LaunchDarkly structures their SDKs.
+
+
+12. 4-Week Build Plan
+Week 1: Core Backend + Evaluation Engine (Days 1–7)
+	•	Days 1–2: Repo setup (monorepo, TypeScript, ESLint, Prettier, Docker Compose with MongoDB + Redis), Mongoose models for Flag, Segment, AuditLog, Environment. Seed script with sample data.
+	•	Days 3–4: Evaluation engine (packages/evaluator). Implement the full evaluation algorithm: enabled check, individual targets, rule matching with all operators, segment evaluation, consistent hashing for rollouts. Write 30+ unit tests covering edge cases.
+	•	Days 5–6: REST API: Flag CRUD, Segment CRUD, evaluation endpoints. Redis caching for flag data. Audit log on every mutation. Authentication middleware (SDK key validation).
+	•	Day 7: SSE endpoint with Redis Pub/Sub. Integration tests for the full evaluation flow. Verify: create flag → create segment → add targeting rule → evaluate → get correct result.
+Week 2: Dashboard UI (Days 8–14)
+	•	Days 8–9: React + Vite + Tailwind setup. Flags list page with toggle, search, and tag filter. Flag creation form.
+	•	Days 10–11: Flag detail page: variations editor, individual targets, RuleBuilder component (the big one — clause dropdowns, operator selection, value input, add/remove, drag-and-drop reorder).
+	•	Day 12: Percentage rollout slider component. Default rule editor. Context tester panel.
+	•	Days 13–14: Segments list and detail pages (reuse RuleBuilder). Included/excluded user management. Segment tester. Audit log page.
+Week 3: SDK + Polish (Days 15–21)
+	•	Days 15–17: Node.js SDK: FeatureGateClient class, initialization, in-memory store, SSE listener, polling fallback, evaluation methods (isEnabled, variation, variationDetail, allFlagsState). Event emitter for update/error/ready.
+	•	Days 18–19: SDK integration tests. Create a sample Express app that uses the SDK to show feature flags in action. Use FeatureGate to gate features in your own projects.
+	•	Day 20: Publish SDK to npm as @featuregate/node-sdk. Write SDK README with quick-start guide and API reference.
+	•	Day 21: Dashboard polish: loading states, error boundaries, empty states, responsive design, dark mode toggle (optional but impressive).
+Week 4: Containerize, CI/CD, Cloud Deploy, Launch (Days 22–28)
+	•	Day 22: Write multi-stage Dockerfiles for server (build TS → slim node:alpine) and dashboard (build React → Nginx). Create docker-compose.prod.yml that mirrors production. Test full stack locally with docker compose up --build.
+	•	Day 23: GitHub Actions CI pipeline: ci.yml (PR trigger: lint → test → build Docker images → run integration tests against containerized stack). deploy-staging.yml (push to main: build → push images to ECR/GCR → terraform apply → update ECS/Cloud Run service).
+	•	Day 24: Terraform infra: Write modules for VPC/networking, ECS Fargate task definitions (or Cloud Run services), ElastiCache Redis, MongoDB Atlas (free M0 cluster), ALB with TLS. Store state in S3/GCS backend. Deploy staging environment.
+	•	Day 25: Production deployment: create deploy-prod.yml (triggered by Git tag/release). Set up production.tfvars. Add health check endpoints (/healthz, /readyz). Configure CloudWatch/Cloud Logging. Verify end-to-end: push code → CI passes → image built → deployed → live.
+	•	Day 26: Create demo mode with pre-populated flags and segments. Write README with architecture diagram (Excalidraw), quick-start (both docker-compose and Terraform), screenshots, and SDK usage. CONTRIBUTING.md.
+	•	Day 27: Record 2-minute Loom demo: create a flag → create a segment → add targeting rules → toggle flag → show SDK picking up change in real-time → show the CI/CD pipeline deploying a change.
+	•	Day 28: Write blog post: "I built an open-source LaunchDarkly alternative and deployed it to AWS with Terraform — here’s how." Post on Dev.to, Hashnode, HN (Show HN), r/node, r/selfhosted, r/aws.
+
+13. Cloud Deployment, Containerization & CI/CD
+This is the section that transforms FeatureGate from a side project into a production-grade system. Every choice here is designed to signal infrastructure maturity to hiring managers.
+13.1 Containerization (Docker)
+API Server Dockerfile (multi-stage)
+Multi-stage builds are essential — they produce small, secure images. Your final image should be under 150MB.
+# packages/server/Dockerfile
+# Stage 1: Build
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+COPY packages/evaluator/package*.json ./packages/evaluator/
+COPY packages/server/package*.json ./packages/server/
+RUN npm ci --workspace=packages/server --workspace=packages/evaluator
+COPY packages/evaluator/ ./packages/evaluator/
+COPY packages/server/ ./packages/server/
+RUN npm run build --workspace=packages/evaluator
+RUN npm run build --workspace=packages/server
+ 
+# Stage 2: Production
+FROM node:20-alpine AS production
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+WORKDIR /app
+COPY --from=builder /app/packages/server/dist ./dist
+COPY --from=builder /app/packages/server/package*.json ./
+COPY --from=builder /app/node_modules ./node_modules
+ENV NODE_ENV=production
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+  CMD wget -qO- http://localhost:3000/healthz || exit 1
+USER appuser
+CMD ["node", "dist/index.js"]
+Dashboard Dockerfile (React → Nginx)
+# packages/dashboard/Dockerfile
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build    # outputs to /app/dist
+ 
+FROM nginx:1.25-alpine AS production
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+HEALTHCHECK --interval=30s --timeout=3s \
+  CMD wget -qO- http://localhost:80/ || exit 1
+Dashboard Nginx Config
+# packages/dashboard/nginx.conf
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+    index index.html;
+ 
+    # SPA routing: serve index.html for all non-file routes
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+ 
+    # Proxy API calls to the backend container
+    location /api/ {
+        proxy_pass http://api-server:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";   # for SSE
+        proxy_set_header Host $host;
+        proxy_buffering off;                     # critical for SSE
+    }
+ 
+    # Cache static assets aggressively
+    location ~* \.(js|css|png|jpg|svg|ico|woff2)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+ 
+    gzip on;
+    gzip_types text/css application/javascript application/json;
+}
+Docker Compose (Local Dev)
+# docker-compose.yml
+version: "3.9"
+services:
+  api-server:
+    build:
+      context: .
+      dockerfile: packages/server/Dockerfile
+    ports: ["3000:3000"]
+    environment:
+      MONGO_URI: mongodb://mongo:27017/featuregate
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: development
+    depends_on: [mongo, redis]
+    restart: unless-stopped
+ 
+  dashboard:
+    build:
+      context: packages/dashboard
+      dockerfile: Dockerfile
+    ports: ["8080:80"]
+    depends_on: [api-server]
+    restart: unless-stopped
+ 
+  mongo:
+    image: mongo:7
+    ports: ["27017:27017"]
+    volumes: [mongo-data:/data/db]
+ 
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+ 
+volumes:
+  mongo-data:
+💡 Why This Matters:  Multi-stage Docker builds, non-root users, health checks, and a proper Nginx config for SPA routing are exactly the details that separate a production engineer from someone who just followed a tutorial. Hiring managers WILL look at your Dockerfiles.
+
+13.2 CI/CD Pipeline (GitHub Actions)
+You’ll have four workflow files, each with a clear trigger and purpose. This is the pipeline that hiring managers want to see in your repo.
+Workflow 1: CI (runs on every PR)
+# .github/workflows/ci.yml
+name: CI
+on:
+  pull_request:
+    branches: [main]
+ 
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:7
+        ports: [27017:27017]
+      redis:
+        image: redis:7-alpine
+        ports: [6379:6379]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test -- --coverage
+      - run: npm run build
+ 
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f packages/server/Dockerfile -t fg-server:test .
+      - run: docker build -f packages/dashboard/Dockerfile
+               -t fg-dashboard:test packages/dashboard
+      # Verify containers start and health checks pass
+      - run: |
+          docker compose -f docker-compose.prod.yml up -d
+          sleep 10
+          curl --fail http://localhost:3000/healthz
+          curl --fail http://localhost:8080/
+          docker compose -f docker-compose.prod.yml down
+Workflow 2: Deploy to Staging (push to main)
+# .github/workflows/deploy-staging.yml
+name: Deploy Staging
+on:
+  push:
+    branches: [main]
+ 
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: <account-id>.dkr.ecr.us-east-1.amazonaws.com
+ 
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # OIDC for AWS auth (no stored keys)
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+ 
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::<id>:role/github-actions
+          aws-region: ${{ env.AWS_REGION }}
+ 
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+ 
+      - name: Build & Push Server Image
+        run: |
+          docker build -f packages/server/Dockerfile \
+            -t $ECR_REGISTRY/featuregate-server:staging-$GITHUB_SHA .
+          docker push $ECR_REGISTRY/featuregate-server:staging-$GITHUB_SHA
+ 
+      - name: Build & Push Dashboard Image
+        run: |
+          docker build -f packages/dashboard/Dockerfile \
+            -t $ECR_REGISTRY/featuregate-dashboard:staging-$GITHUB_SHA \
+            packages/dashboard
+          docker push $ECR_REGISTRY/featuregate-dashboard:staging-$GITHUB_SHA
+ 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+ 
+      - name: Terraform Apply (staging)
+        working-directory: infra
+        run: |
+          terraform init -backend-config=environments/staging.backend
+          terraform apply -auto-approve \
+            -var-file=environments/staging.tfvars \
+            -var="server_image=$ECR_REGISTRY/featuregate-server:staging-$GITHUB_SHA" \
+            -var="dashboard_image=$ECR_REGISTRY/featuregate-dashboard:staging-$GITHUB_SHA"
+Workflow 3: Deploy to Production (on Git tag)
+# .github/workflows/deploy-prod.yml
+name: Deploy Production
+on:
+  push:
+    tags: ["v*"]       # Triggered by: git tag v1.0.0 && git push --tags
+ 
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production   # Requires manual approval in GitHub Settings
+    steps:
+      # Same as staging, but:
+      # - Uses production.tfvars
+      # - Tags images as :v1.0.0 + :latest
+      # - Posts deployment event to Slack
+Workflow 4: Publish SDK (on version bump)
+# .github/workflows/publish-sdk.yml
+name: Publish SDK
+on:
+  push:
+    paths: ["packages/sdk-node/package.json"]
+    branches: [main]
+ 
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      - run: cd packages/sdk-node && npm ci && npm run build && npm test
+      - run: cd packages/sdk-node && npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+💡 CI/CD Hiring Signal:  Four separate workflows with clear triggers (PR, push, tag, path change) shows you understand deployment pipelines, environment promotion (staging → prod), and release management. Using OIDC instead of stored AWS keys shows security awareness. This is exactly what a hiring manager looks for when they click into your .github/workflows/ folder.
+
+13.3 Cloud Infrastructure (Terraform)
+You’ll provision all cloud resources with Terraform, version-controlled in the infra/ directory. Below are the two recommended paths — pick the cloud you’re more comfortable with.
+Option A: AWS (ECS Fargate + ECR)
+This is the recommended path. ECS Fargate is serverless containers — no EC2 instances to manage. You pay per vCPU-second.
+Resources Terraform Creates
+	•	VPC: Custom VPC with 2 public subnets (for ALB) and 2 private subnets (for ECS tasks).
+	•	ECR: Two repositories — featuregate-server and featuregate-dashboard. Images pushed by CI/CD.
+	•	ECS Cluster + Services: One Fargate service per container (server: 0.25 vCPU / 512MB, dashboard: 0.25 vCPU / 256MB). Auto-scaling based on CPU utilization.
+	•	ALB (Application Load Balancer): Routes /api/* to the server container, /* to the dashboard container. TLS termination with ACM certificate. Health check paths configured.
+	•	ElastiCache Redis: Single-node t3.micro (free tier eligible). Private subnet, security group allowing access only from ECS tasks.
+	•	MongoDB Atlas: Free M0 cluster (512MB). Connected via VPC peering or IP allowlist. Alternatively, use AWS DocumentDB for a fully-AWS stack.
+	•	CloudWatch: Log groups for both containers. Dashboard for container metrics (CPU, memory, request count).
+	•	Route 53: Custom domain (featuregate.yourdomain.com) pointing to ALB.
+	•	Secrets Manager: Store MONGO_URI, REDIS_URL, SDK secrets. Injected into ECS task definitions as environment variables.
+Terraform Main Config (Simplified)
+# infra/main.tf
+terraform {
+  required_version = ">= 1.5"
+  backend "s3" {
+    bucket = "featuregate-terraform-state"
+    key    = "infra/terraform.tfstate"
+    region = "us-east-1"
+  }
+  required_providers {
+    aws = { source = "hashicorp/aws", version = "~> 5.0" }
+  }
+}
+ 
+provider "aws" { region = var.aws_region }
+ 
+module "networking" {
+  source     = "./modules/networking"
+  project    = "featuregate"
+  environment = var.environment
+}
+ 
+module "ecs" {
+  source           = "./modules/ecs"
+  vpc_id           = module.networking.vpc_id
+  private_subnets  = module.networking.private_subnet_ids
+  public_subnets   = module.networking.public_subnet_ids
+  server_image     = var.server_image
+  dashboard_image  = var.dashboard_image
+  mongo_uri        = var.mongo_uri
+  redis_url        = module.cache.redis_endpoint
+  environment      = var.environment
+}
+ 
+module "cache" {
+  source          = "./modules/cache"
+  vpc_id          = module.networking.vpc_id
+  private_subnets = module.networking.private_subnet_ids
+  node_type       = "cache.t3.micro"
+}
+ 
+output "app_url" { value = module.ecs.alb_dns_name }
+output "api_url" { value = "${module.ecs.alb_dns_name}/api" }
+ECS Task Definition (Server)
+# infra/modules/ecs/server-task.tf
+resource "aws_ecs_task_definition" "server" {
+  family                   = "featuregate-server-${var.environment}"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = 256
+  memory                   = 512
+  execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
+ 
+  container_definitions = jsonencode([{
+    name  = "server"
+    image = var.server_image
+    portMappings = [{ containerPort = 3000, protocol = "tcp" }]
+    environment = [
+      { name = "NODE_ENV", value = var.environment },
+      { name = "REDIS_URL", value = var.redis_url },
+      { name = "PORT", value = "3000" }
+    ]
+    secrets = [
+      { name = "MONGO_URI", valueFrom = aws_ssm_parameter.mongo_uri.arn }
+    ]
+    healthCheck = {
+      command     = ["CMD-SHELL", "wget -qO- http://localhost:3000/healthz || exit 1"]
+      interval    = 30
+      timeout     = 5
+      retries     = 3
+      startPeriod = 60
+    }
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = "/ecs/featuregate-server"
+        "awslogs-region"        = var.aws_region
+        "awslogs-stream-prefix" = "server"
+      }
+    }
+  }])
+}
+
+Option B: GCP (Cloud Run + Artifact Registry)
+Cloud Run is even simpler than ECS Fargate — it scales to zero, so you pay nothing when there’s no traffic. Great for a portfolio project.
+Resources Terraform Creates
+	•	Artifact Registry: Docker repo in your GCP project. Images pushed by CI/CD.
+	•	Cloud Run Services: One per container. Auto-scales 0–3 instances. Custom domain mapping with managed TLS.
+	•	Memorystore (Redis): Basic tier, 1GB. Connected via VPC connector.
+	•	MongoDB Atlas: Free M0 cluster with GCP network peering.
+	•	Cloud Logging: Automatic for Cloud Run — no config needed.
+	•	Secret Manager: MONGO_URI, SDK keys. Mounted as env vars in Cloud Run.
+Cloud Run Terraform (Simplified)
+# infra/modules/cloudrun/main.tf
+resource "google_cloud_run_v2_service" "server" {
+  name     = "featuregate-server"
+  location = var.region
+ 
+  template {
+    containers {
+      image = var.server_image
+      ports { container_port = 3000 }
+      env { name = "NODE_ENV", value = var.environment }
+      env { name = "REDIS_URL", value = var.redis_url }
+      env {
+        name = "MONGO_URI"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.mongo_uri.id
+            version = "latest"
+          }
+        }
+      }
+      startup_probe {
+        http_get { path = "/healthz" }
+        initial_delay_seconds = 10
+      }
+      liveness_probe {
+        http_get { path = "/healthz" }
+        period_seconds = 30
+      }
+      resources {
+        limits = { cpu = "1", memory = "512Mi" }
+      }
+    }
+    scaling {
+      min_instance_count = 0     # Scale to zero!
+      max_instance_count = 3
+    }
+    vpc_access {
+      connector = google_vpc_access_connector.default.id
+    }
+  }
+}
+
+13.4 Health Check Endpoints
+These are required for ALB/Cloud Run health checks and for your CI pipeline to verify deployments.
+// packages/server/src/routes/health.ts
+router.get('/healthz', (req, res) => {
+  // Liveness: is the process running?
+  res.status(200).json({ status: 'ok', uptime: process.uptime() });
+});
+ 
+router.get('/readyz', async (req, res) => {
+  // Readiness: can the service handle requests?
+  try {
+    await mongoose.connection.db.admin().ping();
+    await redis.ping();
+    res.status(200).json({ 
+      status: 'ready',
+      mongo: 'connected',
+      redis: 'connected' 
+    });
+  } catch (err) {
+    res.status(503).json({ 
+      status: 'not ready', 
+      error: err.message 
+    });
+  }
+});
+13.5 Environment Strategy
+Environment     Trigger                  Database         Cost
+───────────────────────────────────────────────────────────────────
+Local           docker-compose up        Local Mongo      Free
+Staging         Push to main             Atlas free M0    ~$5/mo (Redis)
+Production      Git tag (v*)             Atlas M0 / M10   ~$15/mo total
+For a portfolio project, staging and production can share the same Atlas M0 free cluster with different database names. The key is that the deployment pipeline treats them as separate environments with separate Terraform state files.
+13.6 Cost Breakdown (Portfolio-Friendly)
+	•	MongoDB Atlas M0: Free (512MB, shared cluster). Plenty for a portfolio project.
+	•	AWS ElastiCache t3.micro: ~$12/month (or use GCP Memorystore basic: ~$9/month).
+	•	ECS Fargate (0.25 vCPU, 512MB): ~$9/month running 24/7 (or use Cloud Run scale-to-zero: ~$0-3/month).
+	•	ECR/Artifact Registry: Free tier covers storage. ~$0.
+	•	ALB: ~$16/month (or Cloud Run includes load balancing for free).
+	•	Total: ~$15–40/month on AWS, or ~$10–15/month on GCP (Cloud Run). For a project that demonstrates cloud-native deployment skills, this is worth every rupee.
+💡 Pro Tip:  Use GCP Cloud Run if you want to minimize costs (scale-to-zero = near-free). Use AWS ECS Fargate if you want maximum resume signal (AWS is still the most-requested cloud platform in US startup job postings). Either way, the Terraform code in your repo is what matters most.
+
+13.7 Getting Your First 10–50 Users
+	•	Use it yourself: Gate features in your own projects using FeatureGate. You are user #1.
+	•	npm downloads: Publish SDK. Even 20 downloads/week from your own projects makes the npm page look active.
+	•	Show HN: "Show HN: I built and deployed an open-source LaunchDarkly alternative on AWS with Terraform."
+	•	r/selfhosted + r/node + r/aws + r/devops: These communities love self-hostable dev tools with clean infra.
+	•	Offer free setup: DM 5 indie hackers on Twitter/X: "I built a free feature flag tool — I’ll help you set it up."
+	•	OpenFeature compatibility: Mention OpenFeature spec alignment in your README. This community is growing.
+
+14. Open-Source Strategy
+README Must-Haves
+	•	One-line description: "Self-hosted feature flags with segments, targeting rules, and a Node.js SDK"
+	•	Architecture diagram (Excalidraw → export as PNG)
+	•	Quick start: docker-compose up for local dev, terraform apply for cloud (3 commands max)
+	•	3–4 screenshots of the dashboard (flags list, targeting rules, segment builder, context tester)
+	•	SDK quick-start code snippet (5 lines to get started)
+	•	Built With tech stack badges
+	•	Comparison table: FeatureGate vs LaunchDarkly vs Unleash vs Flipt
+Good First Issues (label in GitHub)
+	•	"Add Discord notification channel for flag changes"
+	•	"Add CSV import for segment included/excluded lists"
+	•	"Add dark mode to dashboard"
+	•	"Add Python SDK" / "Add Go SDK"
+	•	"Add flag archiving and cleanup suggestions for stale flags"
+	•	"Add Helm chart for Kubernetes deployment"
+	•	"Add Terraform module for GCP Cloud Run deployment"
+ROADMAP.md
+	•	v0.2: Scheduled flag changes (turn on at specific date/time)
+	•	v0.3: A/B experimentation with event tracking
+	•	v0.4: React SDK for client-side evaluation
+	•	v0.5: OpenFeature provider implementation
+	•	v0.6: Helm chart + Kubernetes deployment guide
+	•	v1.0: RBAC, teams, multi-project support
+
+15. Resume Bullet
+✨ Resume Line:  Built and deployed FeatureGate, an open-source feature flag platform with segment-based targeting, rule evaluation engine (<10ms via Redis + consistent hashing), and real-time SSE propagation. Containerized with Docker, deployed to AWS ECS Fargate via Terraform and GitHub Actions CI/CD, with a published Node.js SDK on npm.
+
+✨ Alternative (Infra Focus):  Architected a cloud-native feature flag platform: multi-stage Docker builds, 4-stage GitHub Actions CI/CD pipeline (lint → test → build → deploy), Terraform-provisioned AWS infrastructure (ECS Fargate, ElastiCache, ALB), with staging/production environment promotion and health-check-gated deployments.
+
+Ship it. Deploy it. Let people use it.
+The best portfolio project is one that other engineers depend on.

@@ -1,4 +1,4 @@
-import { useReducer, useCallback, useRef, useEffect } from 'react';
+import { useReducer, useCallback, useState, useMemo } from 'react';
 import type { FlagWithConfig, Variation, Clause, Target, Rollout, UpdateFlagInput, UpdateFlagConfigInput } from '@/types/flag';
 
 // ---------------------------------------------------------------------------
@@ -501,19 +501,22 @@ const EMPTY_STATE: FlagFormState = {
 };
 
 export function useFlagForm(serverFlag: FlagWithConfig | undefined) {
-  const originalRef = useRef<FlagFormState>(EMPTY_STATE);
+  const original = useMemo(
+    () => (serverFlag ? flagToFormState(serverFlag) : EMPTY_STATE),
+    [serverFlag],
+  );
+
   const [state, dispatch] = useReducer(flagFormReducer, EMPTY_STATE);
+  const [lastSyncedFlag, setLastSyncedFlag] = useState<string | undefined>(undefined);
 
-  // Sync from server when flag data arrives or changes
-  useEffect(() => {
-    if (serverFlag) {
-      const formState = flagToFormState(serverFlag);
-      originalRef.current = formState;
-      dispatch({ type: 'RESET', payload: formState });
-    }
-  }, [serverFlag]);
+  // Sync from server when flag identity changes — track by key to avoid setState-in-effect lint
+  const flagIdentity = serverFlag?.key;
+  if (flagIdentity && flagIdentity !== lastSyncedFlag) {
+    setLastSyncedFlag(flagIdentity);
+    dispatch({ type: 'RESET', payload: original });
+  }
 
-  const isDirty = JSON.stringify(state) !== JSON.stringify(originalRef.current);
+  const isDirty = JSON.stringify(state) !== JSON.stringify(original);
 
   const getFlagPayload = useCallback((): UpdateFlagInput => {
     return formStateToFlagPayload(state);
@@ -529,8 +532,8 @@ export function useFlagForm(serverFlag: FlagWithConfig | undefined) {
   }, [state]);
 
   const reset = useCallback(() => {
-    dispatch({ type: 'RESET', payload: originalRef.current });
-  }, []);
+    dispatch({ type: 'RESET', payload: original });
+  }, [original]);
 
   return { state, dispatch, isDirty, getFlagPayload, getConfigPayload, getPayload, reset };
 }
