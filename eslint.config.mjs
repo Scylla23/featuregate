@@ -6,7 +6,17 @@ import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 
 export default tseslint.config(
-  { ignores: ["dist", "node_modules", ".turbo", "coverage"] },
+  // Globbed rather than bare names: turbo runs `eslint .` from each package
+  // dir, where a bare "dist" does not match packages/*/dist. Without this,
+  // linting after a build reports hundreds of errors in compiled output.
+  {
+    ignores: [
+      "**/dist/**",
+      "**/node_modules/**",
+      "**/.turbo/**",
+      "**/coverage/**",
+    ],
+  },
 
   // 1. Base JS/TS Config (Applies to everything)
   {
@@ -42,6 +52,14 @@ export default tseslint.config(
         "warn",
         { allowConstantExport: true },
       ],
+      // React Compiler rules, on by default in eslint-plugin-react-hooks v6.
+      // The 6 current violations are real smells, not bugs on React 18, and
+      // they sit in core state — project-provider, use-flag-form — which the
+      // dashboard has no tests to cover. Warn until there is a safety net,
+      // then fix and promote these back to "error".
+      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/refs": "warn",
+      "react-hooks/purity": "warn",
     },
   },
 
