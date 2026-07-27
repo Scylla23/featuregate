@@ -80,7 +80,7 @@ export function ResourceHistory({ resourceType, resourceKey }: ResourceHistoryPr
               Loading more...
             </div>
           ) : (
-            <Button variant="ghost" size="sm" onClick={fetchNextPage} className="text-xs">
+            <Button variant="ghost" size="sm" onClick={() => fetchNextPage()} className="text-xs">
               Load more
             </Button>
           )}

@@ -1,7 +1,7 @@
 import { apiFetch } from './client';
 import type { TeamMember, InviteMemberInput, MemberRole } from '@/types/settings';
 
-interface ListMembersResponse {
+export interface ListMembersResponse {
   members: TeamMember[];
   total: number;
   active: number;
