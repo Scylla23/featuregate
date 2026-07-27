@@ -67,15 +67,18 @@ jobs:
       - name: Deploy server
         run: |
           # .env holds the generated JWT_SECRET and DB URLs — never overwrite or delete it.
-          # --force: pnpm bundles some deps as symlinks where the VM already has a real
-          # directory; without it rsync bails with "could not make way for new symlink".
+          # Excludes are anchored with a leading slash so they only match the package root.
+          # Unanchored, 'src/' also protected node_modules/zod/src from deletion, so that
+          # directory could never be emptied and replaced by pnpm's symlink — rsync failed
+          # with "could not make way for new symlink" and the deploy died before pm2 reload.
+          # --force lets rsync clear a non-empty directory to put a symlink in its place.
           rsync -az --delete --force -e "ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes" \
-            --exclude='.env' \
-            --exclude='src/' \
-            --exclude='tests/' \
-            --exclude='Dockerfile' \
-            --exclude='jest.integration.config.mjs' \
-            --exclude='tsconfig*' \
+            --exclude='/.env' \
+            --exclude='/src/' \
+            --exclude='/tests/' \
+            --exclude='/Dockerfile' \
+            --exclude='/jest.integration.config.mjs' \
+            --exclude='/tsconfig*' \
             ./release/server/ \
             $VM_USER@$VM_HOST:$APP_DIR/server/
 
