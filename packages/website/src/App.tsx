@@ -114,7 +114,6 @@ export default function App() {
         setMobileMenuOpen={setMobileMenuOpen}
       />
       <HeroSection />
-      <LogosBar />
       <FeaturesGrid />
       <ProductDemo activeTab={activeProductTab} setActiveTab={setActiveProductTab} />
       <DeveloperExperience activeTab={activeCodeTab} setActiveTab={setActiveCodeTab} />
@@ -458,40 +457,7 @@ function DashboardMockup() {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Logos Bar
-// ---------------------------------------------------------------------------
-
-const LOGOS = ['Acme Corp', 'Velocity', 'NovaTech', 'BuildCo', 'StackOps', 'CloudNine'];
-
-function LogosBar() {
-  return (
-    <Section className="py-12 md:py-16 border-y border-slate-800/40">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <p className="text-center text-xs uppercase tracking-widest text-slate-600 mb-8">
-          Trusted by engineering teams everywhere
-        </p>
-        <div className="relative overflow-hidden">
-          <div className="flex animate-marquee gap-16 items-center w-max">
-            {[...LOGOS, ...LOGOS].map((name, i) => (
-              <span
-                key={i}
-                className="text-slate-600 text-sm font-semibold tracking-wide whitespace-nowrap select-none"
-              >
-                {name}
-              </span>
-            ))}
-          </div>
-          {/* Fade edges */}
-          <div className="absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-slate-950 to-transparent pointer-events-none" />
-          <div className="absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-slate-950 to-transparent pointer-events-none" />
-        </div>
-      </div>
-    </Section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// 4. Features Bento Grid
+// 3. Features Bento Grid
 // ---------------------------------------------------------------------------
 
 function FeaturesGrid() {
@@ -664,7 +630,7 @@ function FeaturesGrid() {
 }
 
 // ---------------------------------------------------------------------------
-// 5. Product Demo
+// 4. Product Demo
 // ---------------------------------------------------------------------------
 
 function ProductDemo({
@@ -963,7 +929,7 @@ function RolloutDemo() {
 }
 
 // ---------------------------------------------------------------------------
-// 6. Developer Experience
+// 5. Developer Experience
 // ---------------------------------------------------------------------------
 
 function DeveloperExperience({
@@ -1158,7 +1124,7 @@ function RubySnippet() {
 }
 
 // ---------------------------------------------------------------------------
-// 7. How It Works
+// 6. How It Works
 // ---------------------------------------------------------------------------
 
 function HowItWorks() {
@@ -1225,7 +1191,7 @@ function HowItWorks() {
 }
 
 // ---------------------------------------------------------------------------
-// 8. Comparison Table
+// 7. Comparison Table
 // ---------------------------------------------------------------------------
 
 function ComparisonTable() {
@@ -1299,7 +1265,7 @@ function ComparisonTable() {
 }
 
 // ---------------------------------------------------------------------------
-// 9. Testimonials
+// 8. Testimonials
 // ---------------------------------------------------------------------------
 
 function Testimonials() {
@@ -1379,7 +1345,7 @@ function Testimonials() {
 }
 
 // ---------------------------------------------------------------------------
-// 10. Pricing
+// 9. Pricing
 // ---------------------------------------------------------------------------
 
 function PricingSection({
@@ -1549,7 +1515,7 @@ function PricingSection({
 }
 
 // ---------------------------------------------------------------------------
-// 11. CTA
+// 10. CTA
 // ---------------------------------------------------------------------------
 
 function CTASection() {
@@ -1591,7 +1557,7 @@ function CTASection() {
 }
 
 // ---------------------------------------------------------------------------
-// 12. Footer
+// 11. Footer
 // ---------------------------------------------------------------------------
 
 const FOOTER_LINKS = {
