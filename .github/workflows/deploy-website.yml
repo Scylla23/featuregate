@@ -1,4 +1,4 @@
-name: Deploy Website to GitHub Pages
+name: Deploy Website to VM
 
 on:
   push:
@@ -6,23 +6,20 @@ on:
     paths:
       - 'packages/website/**'
       - 'pnpm-lock.yaml'
+      - '.github/workflows/deploy-website.yml'
   workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: deploy-website
   cancel-in-progress: true
 
+env:
+  VM_HOST: 129.153.16.254
+  VM_USER: ubuntu
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: Checkout
@@ -45,11 +42,22 @@ jobs:
       - name: Build website
         run: pnpm -F @featuregate/website build
 
-      - name: Upload build artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: packages/website/dist
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # Host key pinned rather than scanned — TOFU in CI is a MITM window.
+          echo "129.153.16.254 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAK+kmpwpoUlmCzRN7zvWObmZ+8WEbVj85fo/vfo5JSe" > ~/.ssh/known_hosts
 
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Deploy website
+        run: |
+          rsync -az --delete -e "ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes" \
+            packages/website/dist/ \
+            $VM_USER@$VM_HOST:/var/www/featuregate/website/
+
+      - name: Health check
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' https://featuregate.online/)
+          if [ "$code" != "200" ]; then echo "site returned $code"; exit 1; fi
+          echo "website healthy"
