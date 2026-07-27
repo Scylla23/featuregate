@@ -67,7 +67,9 @@ jobs:
       - name: Deploy server
         run: |
           # .env holds the generated JWT_SECRET and DB URLs — never overwrite or delete it.
-          rsync -az --delete -e "ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes" \
+          # --force: pnpm bundles some deps as symlinks where the VM already has a real
+          # directory; without it rsync bails with "could not make way for new symlink".
+          rsync -az --delete --force -e "ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes" \
             --exclude='.env' \
             --exclude='src/' \
             --exclude='tests/' \
