@@ -293,7 +293,10 @@ export function TeamTab() {
             </TableHeader>
             <TableBody>
               {members.map((member) => {
-                const isCurrentUser = member.userId === user?._id;
+                // AuthUser carries no id — the login response is {email, name, role}.
+                // Email is the unique identity here (login looks users up by it).
+                const isCurrentUser =
+                  !!user && member.email.toLowerCase() === user.email.toLowerCase();
                 return (
                   <TableRow
                     key={member._id}

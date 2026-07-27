@@ -5,7 +5,7 @@ import type {
   CreateApiKeyResponse,
 } from '@/types/settings';
 
-interface ListApiKeysResponse {
+export interface ListApiKeysResponse {
   apiKeys: ApiKeyItem[];
   total: number;
   active: number;

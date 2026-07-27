@@ -1,2 +1,8 @@
 packages:
   - "packages/*"
+
+# pnpm 10 blocks postinstall by default; vite needs the esbuild binary and the
+# server integration tests need the mongodb-memory-server download.
+onlyBuiltDependencies:
+  - esbuild
+  - mongodb-memory-server

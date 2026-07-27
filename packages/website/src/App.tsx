@@ -24,6 +24,10 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+// ponytail: dashboard has no /register route — every CTA lands on /login.
+// Admins seed users server-side. Point at a sign-up page when one exists.
+const APP_LOGIN_URL = 'https://app.featuregate.online/login';
+
 // ---------------------------------------------------------------------------
 // Hooks
 // ---------------------------------------------------------------------------
@@ -110,7 +114,6 @@ export default function App() {
         setMobileMenuOpen={setMobileMenuOpen}
       />
       <HeroSection />
-      <LogosBar />
       <FeaturesGrid />
       <ProductDemo activeTab={activeProductTab} setActiveTab={setActiveProductTab} />
       <DeveloperExperience activeTab={activeCodeTab} setActiveTab={setActiveCodeTab} />
@@ -156,7 +159,7 @@ function Navbar({
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           {/* Logo */}
-          <a href="#" className="flex items-center gap-2.5 group">
+          <a href="/" className="flex items-center gap-2.5 group">
             <div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500 transition-transform group-hover:scale-105">
               <Flag className="h-4 w-4 text-white" strokeWidth={2.5} />
             </div>
@@ -179,13 +182,13 @@ function Navbar({
           {/* Desktop CTAs */}
           <div className="hidden md:flex items-center gap-3">
             <a
-              href="#"
+              href={APP_LOGIN_URL}
               className="px-3.5 py-2 text-sm text-slate-400 hover:text-white transition-colors"
             >
               Sign In
             </a>
             <a
-              href="#"
+              href={APP_LOGIN_URL}
               className="inline-flex items-center gap-1.5 rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-blue-500/25 hover:bg-blue-400 transition-all hover:shadow-blue-500/40"
             >
               Get Started Free
@@ -218,11 +221,14 @@ function Navbar({
               </a>
             ))}
             <div className="pt-3 border-t border-slate-800/60 mt-2 space-y-2">
-              <a href="#" className="block px-3 py-2.5 text-sm text-slate-400 hover:text-white">
+              <a
+                href={APP_LOGIN_URL}
+                className="block px-3 py-2.5 text-sm text-slate-400 hover:text-white"
+              >
                 Sign In
               </a>
               <a
-                href="#"
+                href={APP_LOGIN_URL}
                 className="block w-full text-center rounded-lg bg-blue-500 px-4 py-2.5 text-sm font-medium text-white"
               >
                 Get Started Free
@@ -287,7 +293,7 @@ function HeroSection() {
 
             <div className="flex flex-col sm:flex-row items-center gap-3 justify-center lg:justify-start">
               <a
-                href="#"
+                href={APP_LOGIN_URL}
                 className="inline-flex items-center gap-2 rounded-lg bg-blue-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/25 hover:bg-blue-400 hover:shadow-blue-500/40 transition-all w-full sm:w-auto justify-center"
               >
                 Start for Free
@@ -451,40 +457,7 @@ function DashboardMockup() {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Logos Bar
-// ---------------------------------------------------------------------------
-
-const LOGOS = ['Acme Corp', 'Velocity', 'NovaTech', 'BuildCo', 'StackOps', 'CloudNine'];
-
-function LogosBar() {
-  return (
-    <Section className="py-12 md:py-16 border-y border-slate-800/40">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <p className="text-center text-xs uppercase tracking-widest text-slate-600 mb-8">
-          Trusted by engineering teams everywhere
-        </p>
-        <div className="relative overflow-hidden">
-          <div className="flex animate-marquee gap-16 items-center w-max">
-            {[...LOGOS, ...LOGOS].map((name, i) => (
-              <span
-                key={i}
-                className="text-slate-600 text-sm font-semibold tracking-wide whitespace-nowrap select-none"
-              >
-                {name}
-              </span>
-            ))}
-          </div>
-          {/* Fade edges */}
-          <div className="absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-slate-950 to-transparent pointer-events-none" />
-          <div className="absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-slate-950 to-transparent pointer-events-none" />
-        </div>
-      </div>
-    </Section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// 4. Features Bento Grid
+// 3. Features Bento Grid
 // ---------------------------------------------------------------------------
 
 function FeaturesGrid() {
@@ -657,7 +630,7 @@ function FeaturesGrid() {
 }
 
 // ---------------------------------------------------------------------------
-// 5. Product Demo
+// 4. Product Demo
 // ---------------------------------------------------------------------------
 
 function ProductDemo({
@@ -956,7 +929,7 @@ function RolloutDemo() {
 }
 
 // ---------------------------------------------------------------------------
-// 6. Developer Experience
+// 5. Developer Experience
 // ---------------------------------------------------------------------------
 
 function DeveloperExperience({
@@ -1151,7 +1124,7 @@ function RubySnippet() {
 }
 
 // ---------------------------------------------------------------------------
-// 7. How It Works
+// 6. How It Works
 // ---------------------------------------------------------------------------
 
 function HowItWorks() {
@@ -1218,7 +1191,7 @@ function HowItWorks() {
 }
 
 // ---------------------------------------------------------------------------
-// 8. Comparison Table
+// 7. Comparison Table
 // ---------------------------------------------------------------------------
 
 function ComparisonTable() {
@@ -1292,7 +1265,7 @@ function ComparisonTable() {
 }
 
 // ---------------------------------------------------------------------------
-// 9. Testimonials
+// 8. Testimonials
 // ---------------------------------------------------------------------------
 
 function Testimonials() {
@@ -1372,7 +1345,7 @@ function Testimonials() {
 }
 
 // ---------------------------------------------------------------------------
-// 10. Pricing
+// 9. Pricing
 // ---------------------------------------------------------------------------
 
 function PricingSection({
@@ -1523,7 +1496,7 @@ function PricingSection({
               </ul>
 
               <a
-                href="#"
+                href={APP_LOGIN_URL}
                 className={cn(
                   'block w-full text-center rounded-lg px-4 py-2.5 text-sm font-medium transition-all',
                   plan.highlighted
@@ -1542,7 +1515,7 @@ function PricingSection({
 }
 
 // ---------------------------------------------------------------------------
-// 11. CTA
+// 10. CTA
 // ---------------------------------------------------------------------------
 
 function CTASection() {
@@ -1569,7 +1542,7 @@ function CTASection() {
               Free forever for small teams. Set up in under 5 minutes.
             </p>
             <a
-              href="#"
+              href={APP_LOGIN_URL}
               className="inline-flex items-center gap-2 rounded-lg bg-white px-6 py-3 text-sm font-semibold text-slate-900 shadow-lg hover:bg-slate-100 transition-colors"
             >
               Get Started Free
@@ -1584,7 +1557,7 @@ function CTASection() {
 }
 
 // ---------------------------------------------------------------------------
-// 12. Footer
+// 11. Footer
 // ---------------------------------------------------------------------------
 
 const FOOTER_LINKS = {
@@ -1601,7 +1574,7 @@ function Footer() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-8 mb-12">
           {/* Brand column */}
           <div className="col-span-2 md:col-span-1">
-            <a href="#" className="flex items-center gap-2 mb-4">
+            <a href="/" className="flex items-center gap-2 mb-4">
               <div className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-500">
                 <Flag className="h-3.5 w-3.5 text-white" strokeWidth={2.5} />
               </div>

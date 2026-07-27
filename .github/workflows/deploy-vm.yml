@@ -1,0 +1,97 @@
+name: Deploy App to VM
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/server/**'
+      - 'packages/dashboard/**'
+      - 'packages/evaluator/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/deploy-vm.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-vm
+  cancel-in-progress: false
+
+env:
+  VM_HOST: 129.153.16.254
+  VM_USER: ubuntu
+  APP_DIR: /var/www/featuregate
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.7.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Build order matters: server and dashboard both consume evaluator's dist.
+      - name: Build
+        run: |
+          pnpm -F @featuregate/evaluator build
+          pnpm -F @featuregate/server build
+          pnpm -F @featuregate/dashboard build
+
+      # Produces a self-contained server dir with prod-only node_modules,
+      # including the workspace evaluator (pnpm symlink, preserved by rsync -a).
+      - name: Bundle server with production dependencies
+        run: pnpm --filter=@featuregate/server --prod deploy --legacy ./release/server
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # Host key pinned rather than scanned — TOFU in CI is a MITM window.
+          echo "129.153.16.254 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAK+kmpwpoUlmCzRN7zvWObmZ+8WEbVj85fo/vfo5JSe" > ~/.ssh/known_hosts
+
+      - name: Deploy dashboard
+        run: |
+          rsync -az --delete -e "ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes" \
+            packages/dashboard/dist/ \
+            $VM_USER@$VM_HOST:$APP_DIR/dashboard/
+
+      - name: Deploy server
+        run: |
+          # .env holds the generated JWT_SECRET and DB URLs — never overwrite or delete it.
+          rsync -az --delete -e "ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes" \
+            --exclude='.env' \
+            --exclude='src/' \
+            --exclude='tests/' \
+            --exclude='Dockerfile' \
+            --exclude='jest.integration.config.mjs' \
+            --exclude='tsconfig*' \
+            ./release/server/ \
+            $VM_USER@$VM_HOST:$APP_DIR/server/
+
+      - name: Restart API
+        run: |
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes $VM_USER@$VM_HOST \
+            'pm2 reload featuregate-api --update-env && pm2 save'
+
+      - name: Health check
+        run: |
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' \
+              -X POST -H 'Content-Type: application/json' -d '{}' \
+              https://app.featuregate.online/api/v1/auth/login || true)
+            # 400 = Zod rejected the empty body, i.e. the API is up and routing.
+            if [ "$code" = "400" ]; then echo "API healthy"; exit 0; fi
+            echo "attempt $i: got '$code', retrying..."
+            sleep 5
+          done
+          echo "API did not come back healthy"
+          exit 1
