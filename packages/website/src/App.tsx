@@ -91,7 +91,6 @@ export default function App() {
   const [activeCodeTab, setActiveCodeTab] = useState<'javascript' | 'python' | 'go' | 'ruby'>(
     'javascript',
   );
-  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annual'>('monthly');
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -120,7 +119,6 @@ export default function App() {
       <HowItWorks />
       <ComparisonTable />
       <Testimonials />
-      <PricingSection billingPeriod={billingPeriod} setBillingPeriod={setBillingPeriod} />
       <CTASection />
       <Footer />
     </div>
@@ -134,7 +132,6 @@ export default function App() {
 const NAV_LINKS = [
   { label: 'Features', href: '#features' },
   { label: 'How It Works', href: '#how-it-works' },
-  { label: 'Pricing', href: '#pricing' },
   { label: 'Docs', href: '#developers' },
 ];
 
@@ -1345,176 +1342,6 @@ function Testimonials() {
 }
 
 // ---------------------------------------------------------------------------
-// 9. Pricing
-// ---------------------------------------------------------------------------
-
-function PricingSection({
-  billingPeriod,
-  setBillingPeriod,
-}: {
-  billingPeriod: 'monthly' | 'annual';
-  setBillingPeriod: (p: 'monthly' | 'annual') => void;
-}) {
-  const plans = [
-    {
-      name: 'Free',
-      description: 'For hobby projects and small teams',
-      monthly: 0,
-      annual: 0,
-      features: [
-        'Up to 5 team members',
-        '10 feature flags',
-        '2 environments',
-        '1,000 evaluations/day',
-        'Community support',
-      ],
-      cta: 'Get Started',
-      highlighted: false,
-    },
-    {
-      name: 'Pro',
-      description: 'For growing teams shipping fast',
-      monthly: 49,
-      annual: 39,
-      features: [
-        'Unlimited team members',
-        'Unlimited feature flags',
-        'Unlimited environments',
-        '1M evaluations/day',
-        'Percentage rollouts',
-        'Segments & targeting rules',
-        'Audit log',
-        'Email support',
-      ],
-      cta: 'Start Free Trial',
-      highlighted: true,
-    },
-    {
-      name: 'Enterprise',
-      description: 'For organizations at scale',
-      monthly: null,
-      annual: null,
-      features: [
-        'Everything in Pro',
-        'Unlimited evaluations',
-        'SSO / SAML',
-        'SLA guarantee',
-        'Dedicated support',
-        'On-premise option',
-      ],
-      cta: 'Contact Sales',
-      highlighted: false,
-    },
-  ];
-
-  return (
-    <Section id="pricing" className="py-20 md:py-28">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-10">
-          <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-4">
-            Simple, transparent pricing
-          </h2>
-          <p className="text-slate-400 text-lg">Start free. Scale as you grow.</p>
-        </div>
-
-        {/* Toggle */}
-        <div className="flex items-center justify-center gap-3 mb-12">
-          <span
-            className={cn(
-              'text-sm transition-colors',
-              billingPeriod === 'monthly' ? 'text-slate-200' : 'text-slate-500',
-            )}
-          >
-            Monthly
-          </span>
-          <button
-            onClick={() => setBillingPeriod(billingPeriod === 'monthly' ? 'annual' : 'monthly')}
-            className={cn(
-              'relative h-6 w-11 rounded-full transition-colors',
-              billingPeriod === 'annual' ? 'bg-blue-500' : 'bg-slate-700',
-            )}
-          >
-            <div
-              className={cn(
-                'absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform',
-                billingPeriod === 'annual' ? 'translate-x-5' : '',
-              )}
-            />
-          </button>
-          <span
-            className={cn(
-              'text-sm transition-colors',
-              billingPeriod === 'annual' ? 'text-slate-200' : 'text-slate-500',
-            )}
-          >
-            Annual{' '}
-            <span className="text-emerald-400 text-xs font-medium ml-1">Save 20%</span>
-          </span>
-        </div>
-
-        {/* Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-          {plans.map((plan) => (
-            <div
-              key={plan.name}
-              className={cn(
-                'rounded-2xl border p-7 flex flex-col relative',
-                plan.highlighted
-                  ? 'border-blue-500/40 bg-blue-500/[0.03] ring-1 ring-blue-500/20 shadow-lg shadow-blue-500/5 md:-mt-2 md:mb-[-8px]'
-                  : 'border-slate-800/60 bg-slate-900/40',
-              )}
-            >
-              {plan.highlighted && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-blue-500 px-3 py-0.5 text-[10px] font-semibold text-white tracking-wide uppercase">
-                  Most Popular
-                </div>
-              )}
-
-              <h3 className="text-lg font-semibold text-slate-100">{plan.name}</h3>
-              <p className="text-xs text-slate-500 mt-1 mb-5">{plan.description}</p>
-
-              <div className="mb-6">
-                {plan.monthly !== null ? (
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-4xl font-bold text-slate-100 tabular-nums">
-                      ${billingPeriod === 'monthly' ? plan.monthly : plan.annual}
-                    </span>
-                    <span className="text-sm text-slate-500">/month</span>
-                  </div>
-                ) : (
-                  <div className="text-4xl font-bold text-slate-100">Custom</div>
-                )}
-              </div>
-
-              <ul className="space-y-3 flex-1 mb-7">
-                {plan.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2.5 text-sm text-slate-400">
-                    <Check className="h-4 w-4 text-emerald-400/70 shrink-0 mt-0.5" />
-                    {f}
-                  </li>
-                ))}
-              </ul>
-
-              <a
-                href={APP_LOGIN_URL}
-                className={cn(
-                  'block w-full text-center rounded-lg px-4 py-2.5 text-sm font-medium transition-all',
-                  plan.highlighted
-                    ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25 hover:bg-blue-400 hover:shadow-blue-500/40'
-                    : 'border border-slate-700 bg-slate-800/40 text-slate-300 hover:text-white hover:border-slate-600',
-                )}
-              >
-                {plan.cta}
-              </a>
-            </div>
-          ))}
-        </div>
-      </div>
-    </Section>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // 10. CTA
 // ---------------------------------------------------------------------------
 
@@ -1561,7 +1388,7 @@ function CTASection() {
 // ---------------------------------------------------------------------------
 
 const FOOTER_LINKS = {
-  Product: ['Features', 'Pricing', 'Docs', 'Changelog', 'Status'],
+  Product: ['Features', 'Docs', 'Changelog', 'Status'],
   Resources: ['Blog', 'Guides', 'API Reference', 'SDK Downloads'],
   Company: ['About', 'Careers', 'Contact', 'Security'],
   Legal: ['Privacy Policy', 'Terms of Service', 'Cookie Policy'],
