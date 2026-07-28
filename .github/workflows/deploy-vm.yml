@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  VM_HOST: 129.153.16.254
+  VM_HOST: 129.213.110.222
   VM_USER: ubuntu
   APP_DIR: /var/www/featuregate
 
@@ -47,6 +47,12 @@ jobs:
 
       # Produces a self-contained server dir with prod-only node_modules,
       # including the workspace evaluator (pnpm symlink, preserved by rsync -a).
+      #
+      # These node_modules are built on an x86_64 runner and rsynced to an
+      # aarch64 host. That only works because the server's prod dependency tree
+      # is 100% pure JavaScript — verified 2026-07-28: zero .node binaries across
+      # all 117 packages. Adding any native/compiled dependency breaks this
+      # silently on arm64; at that point build on the host or on an arm64 runner.
       - name: Bundle server with production dependencies
         run: pnpm --filter=@featuregate/server --prod deploy --legacy ./release/server
 
@@ -56,7 +62,7 @@ jobs:
           echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           # Host key pinned rather than scanned — TOFU in CI is a MITM window.
-          echo "129.153.16.254 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAK+kmpwpoUlmCzRN7zvWObmZ+8WEbVj85fo/vfo5JSe" > ~/.ssh/known_hosts
+          echo "129.213.110.222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICCKzVISrpUxKFKk5VF45XGkFOmCAdYVeC9m/+KQYAJN" > ~/.ssh/known_hosts
 
       - name: Deploy dashboard
         run: |
@@ -84,15 +90,26 @@ jobs:
 
       - name: Restart API
         run: |
+          # reload fails when the process is not registered yet (first deploy on a
+          # fresh host), so fall back to start. pm2 save rewrites the dump from the
+          # live process list, which merges — the host also runs unrelated apps and
+          # they must survive. Never pm2 delete all / kill / resurrect here.
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes $VM_USER@$VM_HOST \
-            'pm2 reload featuregate-api --update-env && pm2 save'
+            'cd /var/www/featuregate/server && \
+             (pm2 reload featuregate-api --update-env || \
+              pm2 start dist/index.js --name featuregate-api) && pm2 save'
 
       - name: Health check
         run: |
+          # Checked over SSH against the host itself, not the public hostname:
+          # DNS still points at the old VM until the cutover, so a public curl
+          # would happily pass while testing the wrong machine. This also skips
+          # TLS and nginx and hits the API's own port directly.
           for i in $(seq 1 12); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' \
-              -X POST -H 'Content-Type: application/json' -d '{}' \
-              https://app.featuregate.online/api/v1/auth/login || true)
+            code=$(ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes $VM_USER@$VM_HOST \
+              "curl -s -o /dev/null -w '%{http_code}' -X POST \
+               -H 'Content-Type: application/json' -d '{}' \
+               http://127.0.0.1:7002/api/v1/auth/login" || true)
             # 400 = Zod rejected the empty body, i.e. the API is up and routing.
             if [ "$code" = "400" ]; then echo "API healthy"; exit 0; fi
             echo "attempt $i: got '$code', retrying..."

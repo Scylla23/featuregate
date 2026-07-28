@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  VM_HOST: 129.153.16.254
+  VM_HOST: 129.213.110.222
   VM_USER: ubuntu
 
 jobs:
@@ -48,7 +48,7 @@ jobs:
           echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           # Host key pinned rather than scanned — TOFU in CI is a MITM window.
-          echo "129.153.16.254 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAK+kmpwpoUlmCzRN7zvWObmZ+8WEbVj85fo/vfo5JSe" > ~/.ssh/known_hosts
+          echo "129.213.110.222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICCKzVISrpUxKFKk5VF45XGkFOmCAdYVeC9m/+KQYAJN" > ~/.ssh/known_hosts
 
       - name: Deploy website
         run: |
@@ -58,6 +58,10 @@ jobs:
 
       - name: Health check
         run: |
-          code=$(curl -s -o /dev/null -w '%{http_code}' https://featuregate.online/)
-          if [ "$code" != "200" ]; then echo "site returned $code"; exit 1; fi
+          # Checked over SSH against the host itself: DNS still points at the old
+          # VM until the cutover, so curling the public hostname would pass while
+          # testing the wrong machine.
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes $VM_USER@$VM_HOST \
+            'test -s /var/www/featuregate/website/index.html' \
+            || { echo "website index.html missing or empty"; exit 1; }
           echo "website healthy"
